@@ -46,7 +46,7 @@ RESUME_SHARE_TOKEN=replace-with-a-long-random-value
 STUDY_SHARE_TOKEN=replace-with-another-long-random-value
 ```
 
-Successful share-link access creates a secure, HttpOnly browser cookie and redirects to a clean URL. Actual tokens must remain in the server environment and must never be committed.
+Successful share-link access creates a secure, HttpOnly browser cookie and redirects to a clean URL. Resume access also grants one-way access to Tech Notes so the resume's Tech Notes link works naturally; a Tech Notes-only link does not grant resume access. Actual tokens must remain in the server environment and must never be committed.
 
 ## Content Storage
 

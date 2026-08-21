@@ -62,33 +62,43 @@ function tokensMatch(candidate, expected) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
-function shareAccess({ token, cookieName, cookiePath }) {
+function setShareCookie(res, name, value, cookiePath) {
+  res.cookie(name, value, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: cookiePath,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+}
+
+function shareAccess({ token, cookieName, cookiePath, acceptedCookies = [] }) {
   return (req, res, next) => {
     res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
     if (!token) return next();
 
     const queryToken = typeof req.query.share === 'string' ? req.query.share : '';
     if (tokensMatch(queryToken, token)) {
-      res.cookie(cookieName, token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: cookiePath,
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-      });
+      setShareCookie(res, cookieName, token, cookiePath);
       const cleanUrl = new URL(req.originalUrl, 'http://localhost');
       cleanUrl.searchParams.delete('share');
       return res.redirect(302, `${cleanUrl.pathname}${cleanUrl.search}`);
     }
 
     if (tokensMatch(cookieValue(req, cookieName), token)) return next();
+    if (acceptedCookies.some(({ name, value }) => tokensMatch(cookieValue(req, name), value))) return next();
     res.setHeader('Cache-Control', 'private, no-store');
     return res.status(404).send('Not found');
   };
 }
 
 const requireResumeShare = shareAccess({ token: resumeShareToken, cookieName: 'resume_share', cookiePath: '/resume' });
-const requireStudyShare = shareAccess({ token: studyShareToken, cookieName: 'study_share', cookiePath: '/study' });
+const requireStudyShare = shareAccess({
+  token: studyShareToken,
+  cookieName: 'study_share',
+  cookiePath: '/study',
+  acceptedCookies: [{ name: 'study_from_resume', value: resumeShareToken }],
+});
 
 app.use('/resume', requireResumeShare);
 app.use('/study', requireStudyShare);
@@ -102,7 +112,12 @@ for (const file of ['style.css', 'script.js', 'config.js']) {
   app.get(`/resume/${file}`, (_req, res) => res.sendFile(path.join(rootDir, file)));
 }
 app.get(/^\/resume$/, (req, res) => res.redirect(302, `/resume/${req.originalUrl.slice('/resume'.length)}`));
-app.get('/resume/', (_req, res) => res.sendFile(path.join(rootDir, 'index.html')));
+app.get('/resume/', (req, res) => {
+  if (resumeShareToken && studyShareToken && tokensMatch(cookieValue(req, 'resume_share'), resumeShareToken)) {
+    setShareCookie(res, 'study_from_resume', resumeShareToken, '/study');
+  }
+  res.sendFile(path.join(rootDir, 'index.html'));
+});
 app.get('/', (_req, res) => res.status(404).send('Not found'));
 app.get('/robots.txt', (_req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
