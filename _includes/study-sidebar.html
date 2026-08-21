@@ -1,0 +1,45 @@
+{% assign sorted_notes = site.study | sort: "date" | reverse %}
+{% assign notes_by_month = sorted_notes | group_by_exp: "note", "note.date | date: '%Y-%m'" %}
+{% capture collected_tags %}{% for note in site.study %}{% for tag in note.tags %}{{ tag | strip }}|||{% endfor %}{% endfor %}{% endcapture %}
+{% assign study_tags = collected_tags | split: "|||" | uniq | sort %}
+
+<aside class="study-sidebar" id="study-sidebar" aria-label="학습 기록 탐색" data-study-sidebar>
+    <div class="sidebar-header">
+        <a class="study-brand" href="{{ '/study/' | relative_url }}">Tech Notes</a>
+        <button class="sidebar-close" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-close>×</button>
+    </div>
+
+    <nav class="sidebar-nav">
+        <a class="sidebar-primary-link" href="{{ '/study/' | relative_url }}">전체 기록</a>
+
+        {% if notes_by_month.size > 0 %}
+        <section class="sidebar-group" aria-labelledby="sidebar-months-title">
+            <h2 id="sidebar-months-title">월별 기록</h2>
+            <ul>
+                {% for month in notes_by_month %}
+                <li>
+                    <a href="{{ '/study/' | relative_url }}#month-{{ month.name }}">
+                        <span>{{ month.name }}</span>
+                        <span class="sidebar-count">{{ month.items | size }}</span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
+        {% if study_tags.size > 0 %}
+        <section class="sidebar-group" aria-labelledby="sidebar-tags-title">
+            <h2 id="sidebar-tags-title">주제별 태그</h2>
+            <div class="sidebar-tags">
+                {% for tag in study_tags %}
+                    {% assign normalized_tag = tag | strip %}
+                    {% unless normalized_tag == "" %}
+                    <a href="{{ '/study/' | relative_url }}?tag={{ normalized_tag | uri_escape }}" data-sidebar-tag="{{ normalized_tag | escape }}">#{{ normalized_tag }}</a>
+                    {% endunless %}
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+    </nav>
+</aside>

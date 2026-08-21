@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self';">
+    <title>{% if page.url == '/study/' %}Tech Notes · Seungje Lee{% elsif page.title %}{{ page.title | escape }} · Tech Notes{% else %}Tech Notes · Seungje Lee{% endif %}</title>
+    <meta name="description" content="{% if page.description %}{{ page.description | escape }}{% else %}{{ site.description | escape }}{% endif %}">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ '/favicon-16x16.png' | relative_url }}?v=2">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ '/favicon-32x32.png' | relative_url }}?v=2">
+    <link rel="stylesheet" href="{{ '/study/assets/study.css' | relative_url }}">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="{{ '/study/assets/study.js' | relative_url }}" defer></script>
+</head>
+<body class="study-page">
+    <a class="skip-link" href="#study-content">본문으로 바로가기</a>
+
+    <header class="mobile-study-header">
+        <button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>
+            <span aria-hidden="true">☰</span>
+        </button>
+        <a href="{{ '/study/' | relative_url }}">Tech Notes</a>
+    </header>
+
+    {% include study-sidebar.html %}
+    <button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button>
+
+    <main class="study-main" id="study-content" tabindex="-1">
+        {{ content }}
+    </main>
+
+    <button class="study-theme-toggle" type="button" aria-label="다크 모드 켜기" data-theme-toggle>🌙</button>
+</body>
+</html>

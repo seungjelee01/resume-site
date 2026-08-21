@@ -1,0 +1,24 @@
+---
+layout: study
+---
+<article class="study-note">
+    <header class="study-note-header">
+        <p class="study-note-date"><time datetime="{{ page.date | date: '%Y-%m-%d' }}">{{ page.date | date: '%Y. %m. %d' }}</time></p>
+        <h1>{{ page.title | escape }}</h1>
+        {% if page.tags.size > 0 %}
+        <div class="study-note-tags" aria-label="태그">
+            {% for tag in page.tags %}
+            <a href="{{ '/study/' | relative_url }}?tag={{ tag | uri_escape }}">#{{ tag }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </header>
+
+    <div class="study-note-content">
+        {{ content }}
+    </div>
+
+    <footer class="study-note-footer">
+        <a href="{{ '/study/' | relative_url }}">← 전체 학습 기록</a>
+    </footer>
+</article>

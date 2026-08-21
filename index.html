@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self';">
+    <title>Seungje Lee</title>
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=2">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=2">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="stylesheet" href="style.css?v=20260818-10">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="page-controls">
+        <button type="button" class="settings-trigger" data-settings-open aria-label="설정 열기" aria-haspopup="dialog" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+    </div>
+
+    <div class="settings-overlay" data-settings-overlay hidden>
+        <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <header class="settings-header"><h2 id="settings-title">설정</h2><button type="button" class="settings-close" data-settings-close aria-label="설정 닫기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></header>
+            <div class="settings-layout">
+                <nav class="settings-sidebar" aria-label="설정 항목">
+                    <button type="button" class="active" data-settings-tab="general" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg><span data-settings-general>일반</span></button>
+                    <button type="button" data-settings-tab="appearance" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span data-settings-appearance>화면</span></button>
+                </nav>
+                <div class="settings-content">
+                    <div class="settings-pane active" data-settings-pane="general"><h3 data-settings-language-title>언어</h3><p data-settings-language-description>이력서에 표시할 언어를 선택합니다.</p><div class="language-switcher" role="group" aria-label="이력서 언어 선택"><button type="button" data-language="ko" aria-pressed="true">한국어</button><button type="button" data-language="en" aria-pressed="false">English</button></div></div>
+                    <div class="settings-pane" data-settings-pane="appearance" hidden><h3 data-settings-theme-title>테마</h3><p data-settings-theme-description>편안한 화면 밝기를 선택합니다.</p><div class="setting-row"><div><strong data-settings-dark-title>다크 모드</strong><span data-settings-dark-description>어두운 환경에 맞게 화면 색상을 조정합니다.</span></div><button type="button" class="theme-toggle" data-resume-theme-toggle role="switch" aria-checked="false" aria-label="다크 모드 켜기"><span></span></button></div></div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <nav class="section-nav" aria-label="이력서 섹션">
+        <a href="#introduce">Introduction</a>
+        <a href="#skills">Skills</a>
+        <a href="#experience">Experience</a>
+        <a href="#dba-projects" id="dba-projects-nav" hidden>Projects</a>
+        <a href="#certification">Certification</a>
+        <a href="#training">Oracle Training</a>
+        <a href="#education">Education</a>
+        <a href="#etc">Other</a>
+    </nav>
+
+    <main class="container">
+        <section class="profile-section" id="profile">
+            <div class="profile-image">
+                <img src="profile.png" alt="이승제 프로필 사진" id="profile-img">
+            </div>
+            <div class="profile-info">
+                <h1 id="name">이승제</h1>
+                <p class="target-title" id="target-title">Oracle 기반 데이터베이스 운영 역량을 준비하는 신입 DBA</p>
+                <p id="email">lsj0158@gmail.com</p>
+                <p class="contact-note" id="contact-note">이메일로 연락 부탁드립니다.</p>
+                <div class="social-links">
+                    <a href="https://github.com/seungjelee01" id="github-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    <a href="/study/" id="study-link">Tech Notes</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="introduce-section" id="introduce">
+            <h2>INTRODUCTION</h2>
+            <div id="introduce-content">
+                <p>백엔드 개발 과정에서 Amazon RDS for MySQL 기반 성적 관리 시스템을 설계하고, Smart Ring Mobile App과 관제센터 사이의 중계 서버에서 MongoDB를 처리 기록 보관 용도로 활용한 경험이 있습니다. 서비스 데이터를 안정적으로 저장하고 효율적으로 활용하는 과정에 관심을 가지면서 Oracle DBA를 목표로 데이터베이스 운영 분야의 전문성을 준비하고 있습니다.</p>
+                <p>5개월간의 Oracle DBA 교육과정을 통해 Oracle Database 구조, SQL·PL/SQL, 사용자 및 권한 관리, 백업·복구, 성능 분석과 장애 대응을 학습할 예정입니다. 수료 후에는 실제로 수행한 실습과 프로젝트의 환경, 분석 과정, 개선 결과를 이력서와 GitHub에 구체적으로 기록하겠습니다.</p>
+                <p>Linux·AWS 환경의 백엔드 개발 경험을 바탕으로 운영 환경을 이해하고, 장애 원인을 논리적으로 분석하며 안정적인 데이터 서비스를 지원하는 DBA로 성장하고자 합니다.</p>
+            </div>
+            <div class="last-updated"><span id="last-updated-label">최종 수정</span> <span id="last-updated-date">2026. 08. 15</span></div>
+        </section>
+
+        <section class="skills-section" id="skills">
+            <h2>SKILLS</h2>
+            <p class="section-note" id="skills-note">현재 직접 사용한 기술을 기준으로 작성했으며, Oracle 운영 기술은 교육 수료 후 실제 실습 범위에 맞춰 추가합니다.</p>
+            <div class="skill-category">
+                <h3>Database Experience</h3>
+                <div class="skill-items" id="database-skills"><span>Amazon RDS for MySQL</span><span>MongoDB</span><span>데이터베이스 설계</span><span>백엔드 API 연동</span></div>
+            </div>
+            <div class="skill-category">
+                <h3>Database Tools</h3>
+                <div class="skill-items" id="database-tools"><span>DBeaver</span></div>
+            </div>
+            <div class="skill-category">
+                <h3>Infrastructure</h3>
+                <div class="skill-items" id="infrastructure-skills"><span>Amazon EC2 (Linux)</span><span>Nginx</span><span>Bunny CDN</span></div>
+            </div>
+            <div class="skill-category">
+                <h3>Development</h3>
+                <div class="skill-items" id="development-skills"><span>Python</span><span>TypeScript</span><span>JavaScript</span><span>Node.js</span><span>Nest.js</span><span>Express.js</span><span>Git</span></div>
+            </div>
+            <div class="skill-category skill-category-secondary">
+                <h3>Additional Development</h3>
+                <div class="skill-items" id="additional-skills"><span>C#</span><span>Unity</span></div>
+            </div>
+        </section>
+
+        <section class="training-section" id="training">
+            <h2>ORACLE DBA TRAINING</h2>
+            <div id="training-list">
+                <article class="training-item">
+                    <div class="training-meta">수강 예정 · 5개월</div>
+                    <h3 class="training-title">Oracle DBA 교육과정 <span class="training-status">수강 예정</span></h3>
+                    <p class="training-description">교육기관과 세부 일정 확정 후 업데이트</p>
+                    <ul class="training-topics">
+                        <li>Oracle Database 구조와 SQL·PL/SQL</li>
+                        <li>사용자 및 권한 관리, 백업·복구</li>
+                        <li>실행계획 기반 성능 분석과 장애 대응</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <section class="dba-projects-section" id="dba-projects" hidden>
+            <h2>PROJECTS</h2>
+            <div id="dba-project-list"></div>
+        </section>
+
+        <section class="experience-section" id="experience">
+            <h2>EXPERIENCE <span id="total-experience">총 0년 11개월</span></h2>
+            <div class="experience-item">
+                <div class="experience-header">
+                    <div class="experience-date">2024. 09 ~ 2025. 07</div>
+                    <div class="experience-company">래빗홀컴퍼니 주식회사 <span class="duration">0년 11개월</span></div>
+                </div>
+                <div class="experience-detail">
+                    <div class="experience-period">2024. 09 ~ 2025. 07</div>
+                    <div class="experience-position">VR Product: 깡총영어 / 개발 팀장</div>
+                    <ul class="experience-description">
+                        <li>Amazon RDS for MySQL 기반 성적 관리 시스템의 데이터 구조와 백엔드 API 설계·구현</li>
+                        <li>별도의 Amazon EC2 Linux 인스턴스에 깡총영어 백엔드 WAS를 배포·운영</li>
+                        <li>WebRTC 모니터링 시스템의 안정성 개선 및 유지보수</li>
+                        <li>VR 교육용 콘텐츠 개발, 최적화 및 유지보수</li>
+                    </ul>
+                </div>
+                <div class="experience-detail">
+                    <div class="experience-period">2024. 11 ~ 2025. 02</div>
+                    <div class="experience-position">VR Product: 마음평화 / 개발 팀장</div>
+                    <ul class="experience-description">
+                        <li>마음평화와 Smart Ring의 Node.js WAS를 동일한 Amazon EC2 Linux 인스턴스에서 포트별로 구성</li>
+                        <li>Nginx 리버스 프록시를 통해 서비스별 요청 라우팅, HTTP→HTTPS 리디렉션 및 TLS 인증서 처리 적용</li>
+                        <li>기기별 접속 코드 기반 로그인 기능을 위한 Amazon RDS for MySQL 데이터 구조와 백엔드 API 설계·구현</li>
+                        <li>Bunny CDN 기반 영상 파일 원격 다운로드 로직 구현</li>
+                        <li>VR 360도 영상 콘텐츠와 Stereoscopic 3D 영상 처리 시스템 구축 및 유지보수</li>
+                    </ul>
+                </div>
+                <div class="experience-detail">
+                    <div class="experience-period">2025. 03 ~ 2025. 05</div>
+                    <div class="experience-position">Smart Ring / 백엔드 개발자</div>
+                    <ul class="experience-description">
+                        <li>Smart Ring Mobile App과 관제센터 사이의 생체 데이터 중계 서버 및 백엔드 API 설계·구현</li>
+                        <li>사용자 식별정보와 주요 생체 데이터 필드를 애플리케이션 레벨에서 암호화해 관제센터 API로 전송</li>
+                        <li>중계 데이터의 기록 보관을 위해 동일 EC2 인스턴스 내 MongoDB 연동</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section class="certification-section" id="certification">
+            <h2>CERTIFICATION</h2>
+            <div id="certification-list">
+                <div class="certification-item">
+                    <div class="certification-date">2026. 06</div>
+                    <div class="certification-title">정보처리기사</div>
+                    <div class="certification-issuer">한국산업인력공단 발급</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="education-section" id="education">
+            <h2>EDUCATION</h2>
+            <div id="education-list">
+                <div class="education-item">
+                    <div class="education-date">2018. 03 ~ 2024. 02</div>
+                    <div class="education-school">건국대학교</div>
+                    <div class="education-major">컴퓨터공학 학사 졸업</div>
+                </div>
+                <div class="education-item">
+                    <div class="education-date">2015. 03 ~ 2018. 02</div>
+                    <div class="education-school">고색고등학교</div>
+                    <div class="education-major">자연계 졸업 (경기도 수원시)</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="etc-section" id="etc">
+            <h2>OTHER</h2>
+            <div id="etc-list">
+                <div class="etc-item">
+                    <div class="etc-date">2023. 12 ~ 2024. 11</div>
+                    <div class="etc-title">G-STAR 2024 Indie Showcase 'The Cloud VR' 전시 및 Steam 출시</div>
+                    <div class="etc-description">Unity 기반 VR 힐링 인터랙티브 비주얼 노벨 개발 프로젝트</div>
+                </div>
+                <div class="etc-item">
+                    <div class="etc-date">2023. 09 ~ 2023. 11</div>
+                    <div class="etc-title">건국대학교 2023 SW경진대회 대상</div>
+                    <div class="etc-description">Unity 기반 VR 방탈출 공포 게임 개발 프로젝트</div>
+                </div>
+                <div class="etc-item">
+                    <div class="etc-date">2020. 05 ~ 2021. 11</div>
+                    <div class="etc-title">육군 병장 만기 전역</div>
+                    <div class="etc-description">통신병</div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>v.2.0.0 / GitHub / Thanks for Visiting</p>
+        </footer>
+    </main>
+
+    <script src="config.js?v=20260818-2"></script>
+    <script src="script.js?v=20260818-9"></script>
+</body>
+</html>

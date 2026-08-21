@@ -1,0 +1,23 @@
+_site/
+.jekyll-cache/
+.jekyll-metadata
+.sass-cache/
+vendor/bundle/
+node_modules/
+_study_files/
+_private_files/
+_study/*
+!_study/.gitkeep
+/ops/README.md
+
+# Local production operations
+/DEPLOYMENT.md
+/deploy/
+.env
+.env.*
+!.env.example
+
+# Cloudflare credentials must never be committed
+.cloudflared/
+cert.pem
+*-tunnel.json

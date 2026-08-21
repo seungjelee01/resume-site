@@ -1,0 +1,27 @@
+title: "Tech Notes"
+description: "개발과 기술을 공부하며 기록하는 학습 노트"
+url: "https://seungjelee.com"
+baseurl: ""
+lang: "ko-KR"
+timezone: "Asia/Seoul"
+markdown: kramdown
+
+collections:
+  study:
+    output: true
+    permalink: /study/:name/
+
+defaults:
+  - scope:
+      path: ""
+      type: study
+    values:
+      layout: study-note
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - LICENSE
+  - _templates
+  - vendor

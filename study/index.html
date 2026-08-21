@@ -1,0 +1,50 @@
+---
+layout: study
+title: 개발 학습 기록
+description: 개발과 기술을 공부하며 배운 내용을 기록합니다.
+permalink: /study/
+---
+{% assign sorted_notes = site.study | sort: "date" | reverse %}
+{% assign notes_by_month = sorted_notes | group_by_exp: "note", "note.date | date: '%Y-%m'" %}
+
+<header class="study-home-header">
+    <p class="study-eyebrow">TECH LEARNING NOTES</p>
+    <h1>개발 학습 기록</h1>
+    <p>데이터베이스, 백엔드, Linux와 클라우드 등 개발 과정에서 배운 내용을 정리합니다.</p>
+</header>
+
+<div class="study-filter-status" data-filter-status hidden>
+    <span><strong data-active-tag></strong> 태그의 기록을 표시합니다.</span>
+    <a href="{{ '/study/' | relative_url }}">필터 해제</a>
+</div>
+
+{% if sorted_notes.size > 0 %}
+<div class="study-archive" data-study-archive>
+    {% for month in notes_by_month %}
+    <section class="study-month" id="month-{{ month.name }}" data-study-month>
+        <h2>{{ month.name }}</h2>
+        <div class="study-note-list">
+            {% for note in month.items %}
+            <article class="study-note-card" data-study-note data-tags="{{ note.tags | join: '||' | escape }}">
+                <time datetime="{{ note.date | date: '%Y-%m-%d' }}">{{ note.date | date: '%m월 %d일' }}</time>
+                <h3><a href="{{ note.url | relative_url }}">{{ note.title | escape }}</a></h3>
+                {% if note.tags.size > 0 %}
+                <div class="study-card-tags" aria-label="태그">
+                    {% for tag in note.tags %}
+                    <a href="{{ '/study/' | relative_url }}?tag={{ tag | uri_escape }}">#{{ tag }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+</div>
+<p class="study-empty-filter" data-empty-filter hidden>선택한 태그에 해당하는 기록이 없습니다.</p>
+{% else %}
+<section class="study-empty-state">
+    <h2>첫 기록을 준비하고 있습니다.</h2>
+    <p><code>_study/YYYY-MM-DD-slug.md</code> 파일을 추가하면 여기에 자동으로 표시됩니다.</p>
+</section>
+{% endif %}
