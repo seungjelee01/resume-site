@@ -237,6 +237,9 @@ a {
 }
 
 .sidebar-categories a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 7px 10px;
     border-radius: 7px;
     color: #dce6ec;
@@ -504,12 +507,26 @@ a {
 
 .study-note-content table {
     width: 100%;
-    margin: 1.75em 0;
+    margin: 0;
     border: 1px solid var(--study-border);
     border-collapse: collapse;
     background: var(--study-surface);
     font-size: 15px;
     line-height: 1.6;
+}
+
+.study-table-scroll {
+    width: 100%;
+    margin: 1.75em 0;
+    overflow-x: auto;
+    border-radius: 4px;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.study-table-scroll:focus-visible {
+    outline: 2px solid var(--study-accent);
+    outline-offset: 3px;
 }
 
 .study-note-content th,
@@ -795,6 +812,7 @@ body.dark-mode {
     }
 
     .study-note-content table {
+        min-width: 560px;
         font-size: 14px;
     }
 
