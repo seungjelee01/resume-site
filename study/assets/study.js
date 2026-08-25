@@ -120,23 +120,28 @@ function initStudySidebar() {
 
 function initStudyTagFilter() {
     const notes = Array.from(document.querySelectorAll('[data-study-note]'));
-    if (notes.length === 0) return;
-
     const months = Array.from(document.querySelectorAll('[data-study-month]'));
     const status = document.querySelector('[data-filter-status]');
-    const activeFilterLabel = document.querySelector('[data-active-filter]');
-    const filterKindLabel = document.querySelector('[data-filter-kind]');
+    const filterSummary = document.querySelector('[data-filter-summary]');
     const emptyMessage = document.querySelector('[data-empty-filter]');
     const sidebarTags = Array.from(document.querySelectorAll('[data-sidebar-tag]'));
     const sidebarCategories = Array.from(document.querySelectorAll('[data-sidebar-category]'));
+    const searchForm = document.querySelector('[data-study-search-form]');
+    const searchInput = document.querySelector('[data-study-search]');
+
+    if (notes.length === 0) return;
 
     const applyFilter = () => {
         const params = new URLSearchParams(window.location.search);
         const activeCategory = params.get('category')?.trim() || '';
         const activeTag = activeCategory ? '' : params.get('tag')?.trim() || '';
+        const searchTerm = params.get('q')?.trim() || '';
         const normalizedActiveCategory = activeCategory.toLocaleLowerCase('ko-KR');
         const normalizedActiveTag = activeTag.toLocaleLowerCase('ko-KR');
+        const normalizedSearchTerm = searchTerm.toLocaleLowerCase('ko-KR');
         let visibleCount = 0;
+
+        if (searchInput && searchInput.value !== searchTerm) searchInput.value = searchTerm;
 
         notes.forEach((note) => {
             const tags = (note.dataset.tags || '')
@@ -144,9 +149,11 @@ function initStudyTagFilter() {
                 .map((tag) => tag.trim().toLocaleLowerCase('ko-KR'))
                 .filter(Boolean);
             const category = (note.dataset.category || '').trim().toLocaleLowerCase('ko-KR');
-            const visible = normalizedActiveCategory
+            const matchesFilter = normalizedActiveCategory
                 ? category === normalizedActiveCategory
                 : !normalizedActiveTag || tags.includes(normalizedActiveTag);
+            const searchableText = (note.dataset.search || '').toLocaleLowerCase('ko-KR');
+            const visible = matchesFilter && (!normalizedSearchTerm || searchableText.includes(normalizedSearchTerm));
             note.hidden = !visible;
             if (visible) visibleCount += 1;
         });
@@ -155,10 +162,13 @@ function initStudyTagFilter() {
             month.hidden = !month.querySelector('[data-study-note]:not([hidden])');
         });
 
-        if (status && activeFilterLabel && filterKindLabel) {
-            status.hidden = !activeCategory && !activeTag;
-            activeFilterLabel.textContent = activeCategory || activeTag;
-            filterKindLabel.textContent = activeCategory ? '카테고리' : '태그';
+        if (status && filterSummary) {
+            const conditions = [];
+            if (activeCategory) conditions.push(`${activeCategory} 카테고리`);
+            else if (activeTag) conditions.push(`#${activeTag} 태그`);
+            if (searchTerm) conditions.push(`“${searchTerm}” 검색`);
+            status.hidden = conditions.length === 0;
+            filterSummary.textContent = `${conditions.join(' · ')} 결과 ${visibleCount}개`;
         }
         if (emptyMessage) emptyMessage.hidden = visibleCount > 0;
         sidebarTags.forEach((link) => {
@@ -174,6 +184,22 @@ function initStudyTagFilter() {
             else link.removeAttribute('aria-current');
         });
     };
+
+    const updateSearch = () => {
+        const params = new URLSearchParams(window.location.search);
+        const searchTerm = searchInput?.value.trim() || '';
+        if (searchTerm) params.set('q', searchTerm);
+        else params.delete('q');
+        const query = params.toString();
+        window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+        applyFilter();
+    };
+
+    searchForm?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        updateSearch();
+    });
+    searchInput?.addEventListener('input', updateSearch);
 
     document.addEventListener('click', (event) => {
         const link = event.target.closest('a[href*="?tag="], a[href*="?category="]');
