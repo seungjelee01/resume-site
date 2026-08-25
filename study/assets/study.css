@@ -366,6 +366,7 @@ a {
 }
 
 .study-note-card {
+    position: relative;
     padding: 20px 22px;
     border: 1px solid var(--study-border);
     border-radius: 10px;
@@ -411,6 +412,28 @@ a {
 .study-note-card h3 a {
     color: var(--study-text);
     text-decoration: none;
+}
+
+.study-note-card h3 a::after {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    content: '';
+}
+
+.study-note-card h3 a:focus-visible {
+    outline: none;
+}
+
+.study-note-card h3 a:focus-visible::after {
+    outline: 2px solid var(--study-accent);
+    outline-offset: 3px;
+}
+
+.study-note-card .study-card-category,
+.study-note-card .study-card-tags {
+    position: relative;
+    z-index: 1;
 }
 
 .study-card-tags,
