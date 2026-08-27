@@ -1,6 +1,7 @@
 ---
 title: "오늘 학습한 주제"
 date: 2026-08-15
+order: 1
 category: Oracle
 tags:
   - Oracle

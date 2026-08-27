@@ -58,11 +58,14 @@ For local testing, create Markdown files under `_study/` using `_templates/study
 ---
 title: "Example note"
 date: 2026-08-21
+order: 1
 category: Python
 tags:
   - Syntax
 ---
 ```
+
+`order` keeps navigation and same-day sorting independent from the visible title. The administration editor assigns the next order automatically when the field is left empty.
 
 The administrator accepts these file types:
 

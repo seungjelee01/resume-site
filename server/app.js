@@ -168,6 +168,13 @@ function normalizeCategory(value) {
   return category;
 }
 
+function normalizeStudyOrder(value) {
+  if (value === undefined || value === null || value === '') return 0;
+  const order = Number(value);
+  if (!Number.isInteger(order) || order < 1 || order > 9999) throw new Error('학습 순서는 1 이상의 정수여야 합니다.');
+  return order;
+}
+
 function validImageBuffer(extension, buffer) {
   if (extension === '.png') return buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
   if (extension === '.jpg' || extension === '.jpeg') return buffer[0] === 0xff && buffer[1] === 0xd8;
@@ -258,6 +265,7 @@ async function loadPosts() {
     const date = normalizeDate(parsed.data.date || filename.slice(0, 10));
     const category = normalizeCategory(parsed.data.category || '기타');
     const tags = Array.isArray(parsed.data.tags) ? parsed.data.tags.map(String) : [];
+    const order = normalizeStudyOrder(parsed.data.order) || titleSequence(parsed.data.title);
     return {
       filename,
       slug: slugFromFilename(filename),
@@ -265,6 +273,7 @@ async function loadPosts() {
       date,
       category,
       tags,
+      order,
       body: parsed.content.trim(),
       attachmentFiles: await loadAttachmentFiles(slugFromFilename(filename)),
     };
@@ -272,7 +281,7 @@ async function loadPosts() {
   return posts.sort((a, b) => {
     const dateOrder = b.date.localeCompare(a.date);
     if (dateOrder) return dateOrder;
-    const sequenceOrder = titleSequence(b.title) - titleSequence(a.title);
+    const sequenceOrder = b.order - a.order;
     return sequenceOrder || b.title.localeCompare(a.title, 'ko');
   });
 }
@@ -491,7 +500,7 @@ function editor(post = {}) {
     return `<li><div><code>${escapeHtml(filename)}</code>${imageMarkdown}</div><form method="post" action="/admin/edit/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/delete" onsubmit="return confirm('이 첨부 파일을 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form></li>`;
   }).join('');
   const attachmentList = existingFiles ? `<div class="attached-files"><strong>현재 첨부</strong><ul>${existingFiles}</ul></div>` : '';
-  return `<div class="admin-title"><div><p>TECH NOTES EDITOR</p><h1>${isEdit ? '글 수정' : '새 글 작성'}</h1></div></div><form class="editor" method="post" enctype="multipart/form-data" action="${isEdit ? `/admin/edit/${encodeURIComponent(post.slug)}` : '/admin/new'}"><label>제목<input name="title" required maxlength="120" value="${escapeHtml(post.title || '')}"></label><div class="field-row"><label>날짜<input type="date" name="date" required value="${escapeHtml(post.date || new Date().toISOString().slice(0, 10))}"></label><label>주소용 슬러그<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value="${escapeHtml(post.slug || '')}" placeholder="oracle-backup-basics"></label></div><label>카테고리<input name="category" required maxlength="40" value="${escapeHtml(post.category || '')}" placeholder="Python"></label><label>태그 <small>쉼표로 구분</small><input name="tags" value="${escapeHtml((post.tags || []).join(', '))}" placeholder="Syntax, Automation"></label><label>본문 <small>Markdown · 이미지는 업로드 후 수정 화면에 표시되는 삽입 문법을 원하는 위치에 붙여넣기</small><textarea name="body" required>${escapeHtml(post.body || '')}</textarea></label><label>첨부 파일 <small>.py 512KB · 이미지 5MB · .pdf 15MB 이하 · 최대 5개 · 같은 이름은 교체</small><input type="file" name="attachmentFiles" accept=".py,.pdf,.png,.jpg,.jpeg,.gif,.webp,text/x-python,application/pdf,image/png,image/jpeg,image/gif,image/webp" multiple></label><div class="actions"><button class="button primary" type="submit">저장</button><a class="button" href="/admin/notes/">취소</a></div></form>${attachmentList}${isEdit ? `<form class="delete-form" method="post" action="/admin/delete/${encodeURIComponent(post.slug)}" onsubmit="return confirm('이 글을 삭제할까요?')"><button class="button danger" type="submit">글 삭제</button></form>` : ''}`;
+  return `<div class="admin-title"><div><p>TECH NOTES EDITOR</p><h1>${isEdit ? '글 수정' : '새 글 작성'}</h1></div></div><form class="editor" method="post" enctype="multipart/form-data" action="${isEdit ? `/admin/edit/${encodeURIComponent(post.slug)}` : '/admin/new'}"><label>제목<input name="title" required maxlength="120" value="${escapeHtml(post.title || '')}"></label><div class="field-row"><label>날짜<input type="date" name="date" required value="${escapeHtml(post.date || new Date().toISOString().slice(0, 10))}"></label><label>학습 순서 <small>비워 두면 다음 번호 자동 지정</small><input type="number" name="order" min="1" max="9999" value="${post.order || ''}"></label></div><label>주소용 슬러그<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value="${escapeHtml(post.slug || '')}" placeholder="oracle-backup-basics"></label><label>카테고리<input name="category" required maxlength="40" value="${escapeHtml(post.category || '')}" placeholder="Python"></label><label>태그 <small>쉼표로 구분</small><input name="tags" value="${escapeHtml((post.tags || []).join(', '))}" placeholder="Syntax, Automation"></label><label>본문 <small>Markdown · 이미지는 업로드 후 수정 화면에 표시되는 삽입 문법을 원하는 위치에 붙여넣기</small><textarea name="body" required>${escapeHtml(post.body || '')}</textarea></label><label>첨부 파일 <small>.py 512KB · 이미지 5MB · .pdf 15MB 이하 · 최대 5개 · 같은 이름은 교체</small><input type="file" name="attachmentFiles" accept=".py,.pdf,.png,.jpg,.jpeg,.gif,.webp,text/x-python,application/pdf,image/png,image/jpeg,image/gif,image/webp" multiple></label><div class="actions"><button class="button primary" type="submit">저장</button><a class="button" href="/admin/notes/">취소</a></div></form>${attachmentList}${isEdit ? `<form class="delete-form" method="post" action="/admin/delete/${encodeURIComponent(post.slug)}" onsubmit="return confirm('이 글을 삭제할까요?')"><button class="button danger" type="submit">글 삭제</button></form>` : ''}`;
 }
 
 app.get('/admin/new', (_req, res) => res.send(adminLayout('새 글', editor(), res.locals.adminEmail, 'notes')));
@@ -513,9 +522,10 @@ async function savePost(req, previousSlug = null) {
   if (!title || !body || !validateSlug(slug)) throw new Error('제목, 본문, 영문 소문자 슬러그를 확인하세요.');
   const uploadedFiles = (req.files || []).map(prepareUploadedFile);
   const posts = await loadPosts();
+  const order = normalizeStudyOrder(req.body.order) || Math.max(0, ...posts.map((post) => post.order)) + 1;
   if (posts.some((post) => post.slug === slug && post.slug !== previousSlug)) throw new Error('이미 사용 중인 슬러그입니다.');
   const filename = `${date}-${slug}.md`;
-  const output = matter.stringify(`${body}\n`, { title, date, category, tags });
+  const output = matter.stringify(`${body}\n`, { title, date, category, tags, order });
   const target = path.join(postsDir, filename);
   const temporary = path.join(postsDir, `.${crypto.randomUUID()}.tmp`);
   await fs.writeFile(temporary, output, { encoding: 'utf8', mode: 0o640 });
