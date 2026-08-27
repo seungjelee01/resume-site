@@ -10,7 +10,7 @@ The public repository contains the application code and UI implementation. Resum
 - Light and dark appearance settings
 - Markdown-based Tech Notes with categories, tags, and chronological navigation
 - Protected administration console for writing notes and managing files
-- Python, PDF, and image upload validation
+- Python, SQL, PDF, and image upload validation
 - Independent private share links for the resume and Tech Notes
 - Persistent content storage separated from application releases
 - Sanitized Markdown rendering and escaped source-code previews
@@ -69,10 +69,11 @@ The administrator accepts these file types:
 | Type | Limit | Handling |
 | --- | ---: | --- |
 | Python (`.py`) | 512 KB | UTF-8 validation and escaped source preview |
+| SQL (`.sql`, private storage only) | 2 MB | UTF-8 validation and escaped source preview |
 | Images | 5 MB | Signature validation and inline display |
 | PDF (`.pdf`) | 15 MB | Signature validation and download response |
 
-Uploaded Python files are never executed by the application.
+Uploaded Python and SQL files are never executed by the application. SQL files are accepted only in the administrator's private file storage, not as public Tech Notes attachments.
 
 ## Project Structure
 

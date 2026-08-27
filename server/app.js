@@ -28,6 +28,7 @@ const resumeShareToken = process.env.RESUME_SHARE_TOKEN || '';
 const studyShareToken = process.env.STUDY_SHARE_TOKEN || '';
 const app = express();
 const attachmentNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|pdf|png|jpe?g|gif|webp)$/i;
+const privateFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|sql|pdf|png|jpe?g|gif|webp)$/i;
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 const attachmentUpload = multer({
   storage: multer.memoryStorage(),
@@ -35,6 +36,13 @@ const attachmentUpload = multer({
   fileFilter: (_req, file, callback) => attachmentNamePattern.test(file.originalname)
     ? callback(null, true)
     : callback(new Error('지원하는 Python, PDF 또는 이미지 파일만 업로드할 수 있습니다.')),
+});
+const privateFileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 5 },
+  fileFilter: (_req, file, callback) => privateFileNamePattern.test(file.originalname)
+    ? callback(null, true)
+    : callback(new Error('지원하는 Python, SQL, PDF 또는 이미지 파일만 업로드할 수 있습니다.')),
 });
 
 marked.setOptions({ gfm: true, breaks: false });
@@ -171,17 +179,19 @@ function imageMimeType(extension) {
   return { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' }[extension];
 }
 
-function prepareUploadedFile(file) {
+function prepareUploadedFile(file, { allowSql = false } = {}) {
   const extension = path.extname(file.originalname).toLowerCase();
-  if (extension === '.py') {
-    if (file.size > 512 * 1024) throw new Error('Python 파일은 512KB 이하만 업로드할 수 있습니다.');
+  if (extension === '.py' || (allowSql && extension === '.sql')) {
+    const sizeLimit = extension === '.sql' ? 2 * 1024 * 1024 : 512 * 1024;
+    const fileType = extension === '.sql' ? 'SQL' : 'Python';
+    if (file.size > sizeLimit) throw new Error(`${fileType} 파일은 ${extension === '.sql' ? '2MB' : '512KB'} 이하만 업로드할 수 있습니다.`);
     let source;
     try {
       source = new TextDecoder('utf-8', { fatal: true }).decode(file.buffer);
     } catch {
-      throw new Error('UTF-8 텍스트 형식의 Python 파일만 업로드할 수 있습니다.');
+      throw new Error(`UTF-8 텍스트 형식의 ${fileType} 파일만 업로드할 수 있습니다.`);
     }
-    if (source.includes('\0')) throw new Error('텍스트 형식의 Python 파일만 업로드할 수 있습니다.');
+    if (source.includes('\0')) throw new Error(`텍스트 형식의 ${fileType} 파일만 업로드할 수 있습니다.`);
     return { filename: file.originalname, content: source };
   }
   if (imageExtensions.has(extension)) {
@@ -206,7 +216,7 @@ async function storeUploadedFiles(files, destination) {
 async function loadPrivateFiles() {
   await fs.mkdir(privateFilesDir, { recursive: true });
   const entries = (await fs.readdir(privateFilesDir, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && attachmentNamePattern.test(entry.name));
+    .filter((entry) => entry.isFile() && privateFileNamePattern.test(entry.name));
   return Promise.all(entries.map(async (entry) => {
     const stats = await fs.stat(path.join(privateFilesDir, entry.name));
     return { filename: entry.name, size: stats.size, modified: stats.mtime.toISOString() };
@@ -429,14 +439,14 @@ app.get('/admin/files/', async (_req, res, next) => {
       return `<tr><td><code>${escapeHtml(file.filename)}</code></td><td>${formatFileSize(file.size)}</td><td>${file.modified.slice(0, 10)}</td><td><a href="/admin/files/${encodeURIComponent(file.filename)}">${action}</a></td><td><form method="post" action="/admin/files/${encodeURIComponent(file.filename)}/delete" onsubmit="return confirm('이 파일을 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form></td></tr>`;
     }).join('');
     const empty = files.length ? '' : '<p class="private-empty">저장된 파일이 없습니다.</p>';
-    const content = `<div class="admin-title"><div><p>PRIVATE FILE STORAGE</p><h1>비공개 파일 저장소</h1></div></div><form class="private-upload" method="post" enctype="multipart/form-data" action="/admin/files/upload"><label>파일 선택 <small>.py 512KB · 이미지 5MB · .pdf 15MB 이하 · 최대 5개</small><input type="file" name="privateFiles" accept=".py,.pdf,.png,.jpg,.jpeg,.gif,.webp,text/x-python,application/pdf,image/png,image/jpeg,image/gif,image/webp" multiple required></label><button class="button primary" type="submit">업로드</button></form>${empty}<div class="table-wrap private-files-table"><table><thead><tr><th>파일명</th><th>크기</th><th>수정일</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    const content = `<div class="admin-title"><div><p>PRIVATE FILE STORAGE</p><h1>비공개 파일 저장소</h1></div></div><form class="private-upload" method="post" enctype="multipart/form-data" action="/admin/files/upload"><label>파일 선택 <small>.py 512KB · .sql 2MB · 이미지 5MB · .pdf 15MB 이하 · 최대 5개</small><input type="file" name="privateFiles" accept=".py,.sql,.pdf,.png,.jpg,.jpeg,.gif,.webp,text/x-python,application/sql,text/plain,application/pdf,image/png,image/jpeg,image/gif,image/webp" multiple required></label><button class="button primary" type="submit">업로드</button></form>${empty}<div class="table-wrap private-files-table"><table><thead><tr><th>파일명</th><th>크기</th><th>수정일</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
     res.send(adminLayout('비공개 파일 저장소', content, res.locals.adminEmail, 'files'));
   } catch (error) { next(error); }
 });
 
 app.get('/admin/files/:filename', async (req, res, next) => {
   try {
-    if (!attachmentNamePattern.test(req.params.filename)) return res.status(404).send('Not found');
+    if (!privateFileNamePattern.test(req.params.filename)) return res.status(404).send('Not found');
     const files = await loadPrivateFiles();
     if (!files.some((file) => file.filename === req.params.filename)) return res.status(404).send('Not found');
     const filePath = path.join(privateFilesDir, req.params.filename);
@@ -448,14 +458,14 @@ app.get('/admin/files/:filename', async (req, res, next) => {
       return res.sendFile(filePath);
     }
     const source = await fs.readFile(filePath, 'utf8');
-    const content = `<div class="admin-title"><div><p>PRIVATE PYTHON FILE</p><h1>${escapeHtml(req.params.filename)}</h1></div><a class="button" href="/admin/files/">파일 목록</a></div><pre class="private-code"><code>${escapeHtml(source)}</code></pre>`;
+    const content = `<div class="admin-title"><div><p>PRIVATE CODE FILE</p><h1>${escapeHtml(req.params.filename)}</h1></div><a class="button" href="/admin/files/">파일 목록</a></div><pre class="private-code"><code>${escapeHtml(source)}</code></pre>`;
     res.send(adminLayout(req.params.filename, content, res.locals.adminEmail, 'files'));
   } catch (error) { next(error); }
 });
 
-app.post('/admin/files/upload', attachmentUpload.array('privateFiles', 5), async (req, res, next) => {
+app.post('/admin/files/upload', privateFileUpload.array('privateFiles', 5), async (req, res, next) => {
   try {
-    const files = (req.files || []).map(prepareUploadedFile);
+    const files = (req.files || []).map((file) => prepareUploadedFile(file, { allowSql: true }));
     if (!files.length) throw new Error('업로드할 파일을 선택하세요.');
     await storeUploadedFiles(files, privateFilesDir);
     res.redirect('/admin/files/');
@@ -464,7 +474,7 @@ app.post('/admin/files/upload', attachmentUpload.array('privateFiles', 5), async
 
 app.post('/admin/files/:filename/delete', async (req, res, next) => {
   try {
-    if (!attachmentNamePattern.test(req.params.filename)) return res.status(404).send('Not found');
+    if (!privateFileNamePattern.test(req.params.filename)) return res.status(404).send('Not found');
     const files = await loadPrivateFiles();
     if (!files.some((file) => file.filename === req.params.filename)) return res.status(404).send('Not found');
     await fs.unlink(path.join(privateFilesDir, req.params.filename));
