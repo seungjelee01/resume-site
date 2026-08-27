@@ -144,9 +144,10 @@ function slugFromFilename(filename) {
 }
 
 function titleSequence(title) {
-  const circledNumbers = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
-  const match = String(title).match(/Python 기초 문법 ([①-⑳])/);
-  return match ? circledNumbers.indexOf(match[1]) + 1 : 0;
+  const circledNumbers = Array.from('①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿');
+  const match = String(title).match(/Python 기초 문법 (.)/u);
+  const index = match ? circledNumbers.indexOf(match[1]) : -1;
+  return index + 1;
 }
 
 function validateSlug(slug) {
