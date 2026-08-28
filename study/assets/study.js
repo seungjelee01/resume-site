@@ -13,10 +13,28 @@ function initStudyChat() {
     const messages = document.querySelector('[data-chat-messages]');
     const form = document.querySelector('[data-chat-form]');
     const input = document.querySelector('[data-chat-input]');
-    if (!panel || !openButton || !closeButton || !status || !messages || !form || !input) return;
+    const unreadBadge = document.querySelector('[data-chat-unread]');
+    if (!panel || !openButton || !closeButton || !status || !messages || !form || !input || !unreadBadge) return;
     let socket;
     let reconnectTimer;
     let initialized = false;
+    let conversationId = '';
+    let adminMessages = [];
+
+    const readKey = () => `study-chat-last-read:${conversationId}`;
+    const updateUnread = () => {
+        if (!conversationId) return;
+        const lastRead = localStorage.getItem(readKey()) || '';
+        const count = adminMessages.filter((message) => message.createdAt > lastRead).length;
+        unreadBadge.textContent = count > 99 ? '99+' : String(count);
+        unreadBadge.hidden = count === 0;
+    };
+    const markRead = () => {
+        if (!conversationId) return;
+        const latest = adminMessages.at(-1)?.createdAt || new Date().toISOString();
+        localStorage.setItem(readKey(), latest);
+        updateUnread();
+    };
 
     const renderMessage = (message) => {
         if (messages.querySelector(`[data-message-id="${CSS.escape(message.id)}"]`)) return;
@@ -45,9 +63,20 @@ function initStudyChat() {
             socket.addEventListener('message', (event) => {
                 const payload = JSON.parse(event.data);
                 if (payload.type === 'ready') {
+                    conversationId = payload.id;
+                    adminMessages = payload.messages.filter((message) => message.sender === 'admin');
                     messages.replaceChildren();
                     payload.messages.forEach(renderMessage);
-                } else if (payload.type === 'message') renderMessage(payload.message);
+                    if (panel.hidden) updateUnread();
+                    else markRead();
+                } else if (payload.type === 'message') {
+                    renderMessage(payload.message);
+                    if (payload.message.sender === 'admin') {
+                        adminMessages.push(payload.message);
+                        if (panel.hidden) updateUnread();
+                        else markRead();
+                    }
+                }
                 else if (payload.type === 'error') status.textContent = payload.message;
             });
             socket.addEventListener('close', () => {
@@ -63,6 +92,7 @@ function initStudyChat() {
         openButton.hidden = true;
         openButton.setAttribute('aria-expanded', 'true');
         if (!socket || socket.readyState > WebSocket.OPEN) connect();
+        markRead();
         input.focus();
     });
     closeButton.addEventListener('click', () => { panel.hidden = true; openButton.hidden = false; openButton.setAttribute('aria-expanded', 'false'); openButton.focus(); });
