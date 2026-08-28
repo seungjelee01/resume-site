@@ -21,11 +21,18 @@ const privateFilesDir = process.env.PRIVATE_FILES_DIR
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'private-files')
     : path.join(rootDir, '_private_files');
+const siteSettingsFile = process.env.SITE_SETTINGS_FILE
+  ? path.resolve(process.env.SITE_SETTINGS_FILE)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'site-settings.json')
+    : path.join(rootDir, '_site_settings.json');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
 const resumeShareToken = process.env.RESUME_SHARE_TOKEN || '';
 const studyShareToken = process.env.STUDY_SHARE_TOKEN || '';
+const defaultSiteSettings = Object.freeze({ studyAccess: studyShareToken ? 'shared' : 'public' });
+let siteSettingsCache;
 const app = express();
 const attachmentNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|pdf|png|jpe?g|gif|webp)$/i;
 const privateFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|sql|pdf|png|jpe?g|gif|webp)$/i;
@@ -80,23 +87,51 @@ function setShareCookie(res, name, value, cookiePath) {
   });
 }
 
-function shareAccess({ token, cookieName, cookiePath, acceptedCookies = [] }) {
-  return (req, res, next) => {
-    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
-    if (!token) return next();
+async function loadSiteSettings() {
+  if (siteSettingsCache) return siteSettingsCache;
+  try {
+    const parsed = JSON.parse(await fs.readFile(siteSettingsFile, 'utf8'));
+    siteSettingsCache = {
+      studyAccess: ['shared', 'public'].includes(parsed.studyAccess)
+        ? parsed.studyAccess
+        : defaultSiteSettings.studyAccess,
+    };
+  } catch (error) {
+    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+    siteSettingsCache = { ...defaultSiteSettings };
+  }
+  return siteSettingsCache;
+}
 
-    const queryToken = typeof req.query.share === 'string' ? req.query.share : '';
-    if (tokensMatch(queryToken, token)) {
-      setShareCookie(res, cookieName, token, cookiePath);
-      const cleanUrl = new URL(req.originalUrl, 'http://localhost');
-      cleanUrl.searchParams.delete('share');
-      return res.redirect(302, `${cleanUrl.pathname}${cleanUrl.search}`);
-    }
+async function saveSiteSettings(settings) {
+  await fs.mkdir(path.dirname(siteSettingsFile), { recursive: true });
+  const temporaryFile = path.join(path.dirname(siteSettingsFile), `.${crypto.randomUUID()}.tmp`);
+  await fs.writeFile(temporaryFile, `${JSON.stringify(settings, null, 2)}\n`, { encoding: 'utf8', mode: 0o640 });
+  await fs.rename(temporaryFile, siteSettingsFile);
+  siteSettingsCache = settings;
+}
 
-    if (tokensMatch(cookieValue(req, cookieName), token)) return next();
-    if (acceptedCookies.some(({ name, value }) => tokensMatch(cookieValue(req, name), value))) return next();
-    res.setHeader('Cache-Control', 'private, no-store');
-    return res.status(404).send('Not found');
+function shareAccess({ token, cookieName, cookiePath, acceptedCookies = [], publicAccess = async () => false }) {
+  return async (req, res, next) => {
+    try {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      if (!token) return next();
+
+      const queryToken = typeof req.query.share === 'string' ? req.query.share : '';
+      if (tokensMatch(queryToken, token)) {
+        setShareCookie(res, cookieName, token, cookiePath);
+        const cleanUrl = new URL(req.originalUrl, 'http://localhost');
+        cleanUrl.searchParams.delete('share');
+        return res.redirect(302, `${cleanUrl.pathname}${cleanUrl.search}`);
+      }
+
+      if (await publicAccess()) return next();
+
+      if (tokensMatch(cookieValue(req, cookieName), token)) return next();
+      if (acceptedCookies.some(({ name, value }) => tokensMatch(cookieValue(req, name), value))) return next();
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.status(404).send('Not found');
+    } catch (error) { return next(error); }
   };
 }
 
@@ -106,6 +141,7 @@ const requireStudyShare = shareAccess({
   cookieName: 'study_share',
   cookiePath: '/study',
   acceptedCookies: [{ name: 'study_from_resume', value: resumeShareToken }],
+  publicAccess: async () => (await loadSiteSettings()).studyAccess === 'public',
 });
 
 app.use('/resume', requireResumeShare);
@@ -387,12 +423,15 @@ app.get('/study/:slug/files/:filename/', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
   const accessEmail = req.get('Cf-Access-Authenticated-User-Email');
   const isLocal = ['127.0.0.1', '::1'].includes(req.ip);
   if (!accessEmail && !(allowLocalAdmin && isLocal)) return res.status(403).send('Cloudflare Access 인증이 필요합니다.');
-  res.locals.adminEmail = accessEmail || 'local-development';
-  next();
+  try {
+    res.locals.adminEmail = accessEmail || 'local-development';
+    res.locals.siteSettings = await loadSiteSettings();
+    next();
+  } catch (error) { next(error); }
 }
 
 app.get(/^\/admin$/, (_req, res) => res.redirect(302, '/admin/'));
@@ -418,10 +457,24 @@ function adminLayout(title, content, email, activeSection = '') {
   };
   const navItem = (section, href, label) => `<a${section === activeSection ? ' class="is-active" aria-current="page"' : ''} href="${href}">${icons[section]}<span>${label}</span></a>`;
   const resumeUrl = resumeShareToken ? `/resume/?share=${encodeURIComponent(resumeShareToken)}` : '/resume/';
-  const studyUrl = studyShareToken ? `/study/?share=${encodeURIComponent(studyShareToken)}` : '/study/';
+  const studyAccess = siteSettingsCache?.studyAccess || defaultSiteSettings.studyAccess;
+  const studyUrl = studyAccess === 'shared' && studyShareToken ? `/study/?share=${encodeURIComponent(studyShareToken)}` : '/study/';
+  const sharedDisabled = studyShareToken ? '' : ' disabled';
+  const sharedSelected = studyAccess === 'shared' ? ' selected' : '';
+  const publicSelected = studyAccess === 'public' ? ' selected' : '';
   const pageTitle = title === '대시보드' ? 'Administration Console · Seungje Lee' : `${escapeHtml(title)} · Administration Console`;
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260820-4"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260821-15"><script src="/admin/assets/admin-settings.js?v=20260821-4" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="dialog"><div class="admin-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">완료</button></form></dialog></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260820-4"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260828-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
 }
+
+app.post('/admin/settings/study-access', async (req, res, next) => {
+  try {
+    const studyAccess = String(req.body.studyAccess || '');
+    if (!['shared', 'public'].includes(studyAccess)) throw new Error('Tech Notes 접근 설정을 확인하세요.');
+    if (studyAccess === 'shared' && !studyShareToken) throw new Error('공유 링크 모드에는 STUDY_SHARE_TOKEN이 필요합니다.');
+    await saveSiteSettings({ studyAccess });
+    res.redirect('/admin/');
+  } catch (error) { next(error); }
+});
 
 app.get('/admin/', async (_req, res, next) => {
   try {

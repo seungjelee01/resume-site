@@ -10,6 +10,7 @@ The public repository contains the application code and UI implementation. Resum
 - Light and dark appearance settings
 - Markdown-based Tech Notes with categories, tags, and chronological navigation
 - Protected administration console for writing notes and managing files
+- Runtime Tech Notes access control for public or share-link-only visibility
 - Python, SQL, PDF, and image upload validation
 - Independent private share links for the resume and Tech Notes
 - Persistent content storage separated from application releases
@@ -47,6 +48,8 @@ STUDY_SHARE_TOKEN=replace-with-another-long-random-value
 ```
 
 Successful share-link access creates a secure, HttpOnly browser cookie and redirects to a clean URL. Resume access also grants one-way access to Tech Notes so the resume's Tech Notes link works naturally; a Tech Notes-only link does not grant resume access. Actual tokens must remain in the server environment and must never be committed.
+
+When `STUDY_SHARE_TOKEN` is configured, an administrator can switch Tech Notes between share-link-only and public access from the administration settings dialog. The runtime choice is persisted in `site-settings.json` next to the configured `STUDY_DIR` and survives application releases. Share-link-only mode cannot be enabled without a configured token.
 
 ## Content Storage
 

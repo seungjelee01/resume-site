@@ -6,6 +6,7 @@ vendor/bundle/
 node_modules/
 _study_files/
 _private_files/
+_site_settings.json
 _study/*
 !_study/.gitkeep
 /ops/README.md

@@ -237,6 +237,34 @@
     font: inherit;
 }
 
+.admin-settings select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.admin-settings-access {
+    display: grid;
+    gap: 10px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+}
+
+.admin-settings-access h3,
+.admin-settings-access small {
+    margin: 0;
+}
+
+.admin-settings-access h3 {
+    color: var(--ink);
+    font-size: 14px;
+}
+
+.admin-settings-access small {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
 .admin-settings-account {
     display: grid;
     gap: 10px;
