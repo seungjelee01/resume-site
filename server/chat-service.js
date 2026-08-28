@@ -30,6 +30,7 @@ function publicConversation(conversation) {
 
 export function createChatService({ directory, production, allowLocalAdmin, canAccessStudy, notify }) {
   const clients = new Map();
+  const adminListClients = new Set();
   const writeQueues = new Map();
   const rateLimits = new Map();
   const sessionRateLimits = new Map();
@@ -83,6 +84,18 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
       if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
     }
   };
+  const roomSummary = (conversation) => ({
+    id: conversation.id,
+    visitorLabel: `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`,
+    preview: conversation.messages.at(-1)?.content || '아직 메시지가 없습니다.',
+    updatedAt: conversation.updatedAt,
+    unread: conversation.unread || 0,
+    ipMasked: conversation.ipMasked,
+  });
+  const broadcastRoom = (conversation) => {
+    const payload = JSON.stringify({ type: 'room', room: roomSummary(conversation) });
+    for (const socket of adminListClients) if (socket.readyState === WebSocket.OPEN) socket.send(payload);
+  };
 
   async function session(req, res) {
     let conversation = await authenticate(req.get('Cookie'));
@@ -131,7 +144,12 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
     if (!idPattern.test(id)) return false;
     for (const socket of clients.get(id) || []) socket.close(1008, 'conversation deleted');
     clients.delete(id);
-    try { await fs.rm(filePath(id)); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+    try {
+      await fs.rm(filePath(id));
+      const payload = JSON.stringify({ type: 'room-deleted', id });
+      for (const socket of adminListClients) if (socket.readyState === WebSocket.OPEN) socket.send(payload);
+      return true;
+    } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
   }
 
   function attach(server) {
@@ -139,29 +157,35 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
     server.on('upgrade', async (request, socket, head) => {
       try {
         const url = new URL(request.url, `http://${request.headers.host}`);
-        if (!['/study/ws/chat', '/admin/ws/chat'].includes(url.pathname)) return socket.destroy();
+        if (!['/study/ws/chat', '/admin/ws/chat', '/admin/ws/chat-list'].includes(url.pathname)) return socket.destroy();
         const origin = new URL(request.headers.origin || 'invalid:');
         if (origin.host !== request.headers.host) return socket.destroy();
-        const isAdmin = url.pathname === '/admin/ws/chat';
+        const isAdminList = url.pathname === '/admin/ws/chat-list';
+        const isAdmin = url.pathname.startsWith('/admin/ws/');
         let conversation;
         if (isAdmin) {
           const isLocal = ['127.0.0.1', '::1'].includes(request.socket.remoteAddress);
           if (!request.headers['cf-access-authenticated-user-email'] && !(allowLocalAdmin && isLocal)) return socket.destroy();
-          conversation = await get(url.searchParams.get('conversation'));
+          if (!isAdminList) conversation = await get(url.searchParams.get('conversation'));
         } else {
           if (!(await canAccessStudy(parseCookies(request.headers.cookie)))) return socket.destroy();
           conversation = await authenticate(request.headers.cookie);
         }
-        if (!conversation) return socket.destroy();
-        webSocketServer.handleUpgrade(request, socket, head, (webSocket) => webSocketServer.emit('connection', webSocket, { conversation, isAdmin }));
+        if (!isAdminList && !conversation) return socket.destroy();
+        webSocketServer.handleUpgrade(request, socket, head, (webSocket) => webSocketServer.emit('connection', webSocket, { conversation, isAdmin, isAdminList }));
       } catch { socket.destroy(); }
     });
-    webSocketServer.on('connection', async (socket, { conversation, isAdmin }) => {
+    webSocketServer.on('connection', async (socket, { conversation, isAdmin, isAdminList }) => {
+      if (isAdminList) {
+        adminListClients.add(socket);
+        socket.on('close', () => adminListClients.delete(socket));
+        return;
+      }
       const id = conversation.id;
       if (!clients.has(id)) clients.set(id, new Set());
       clients.get(id).add(socket);
       socket.isAdmin = isAdmin;
-      if (isAdmin && conversation.unread) await update(id, async () => { const current = await load(id); current.unread = 0; await save(current); });
+      if (isAdmin && conversation.unread) await update(id, async () => { const current = await load(id); current.unread = 0; await save(current); broadcastRoom(current); });
       socket.send(JSON.stringify({ type: 'ready', ...publicConversation(await load(id)) }));
       socket.on('message', async (data) => {
         try {
@@ -179,6 +203,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
             return current;
           });
           broadcast(id, { type: 'message', message });
+          broadcastRoom(saved);
           if (!isAdmin) notify(saved, message);
         } catch (error) { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'error', message: error.message })); }
       });

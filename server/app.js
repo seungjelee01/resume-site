@@ -821,10 +821,10 @@ app.get('/admin/chats/', async (_req, res, next) => {
       const lastMessage = conversation.messages.at(-1);
       const preview = lastMessage ? lastMessage.content.slice(0, 90) : '아직 메시지가 없습니다.';
       const unread = conversation.unread ? `<span class="admin-chat-unread">${conversation.unread}</span>` : '';
-      return `<a class="admin-chat-room${conversation.unread ? ' is-unread' : ''}" href="/admin/chats/${conversation.id}/"><div><strong>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</strong>${unread}<time>${escapeHtml(formatCommentDate(conversation.updatedAt))}</time></div><p>${escapeHtml(preview)}</p><small>${escapeHtml(conversation.ipMasked)}</small></a>`;
+      return `<a class="admin-chat-room${conversation.unread ? ' is-unread' : ''}" href="/admin/chats/${conversation.id}/" data-chat-room="${conversation.id}"><div><strong>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</strong>${unread}<time>${escapeHtml(formatCommentDate(conversation.updatedAt))}</time></div><p>${escapeHtml(preview)}</p><small>${escapeHtml(conversation.ipMasked)}</small></a>`;
     }).join('');
     const body = rows || '<p class="private-empty">접수된 실시간 문의가 없습니다.</p>';
-    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-2"><div class="admin-title"><div><p>LIVE INQUIRIES</p><h1>실시간 문의</h1></div><span>${conversations.length}개</span></div><div class="admin-chat-rooms">${body}</div>`;
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-2"><div class="admin-title"><div><p>LIVE INQUIRIES</p><h1>실시간 문의</h1></div><span data-chat-room-count>${conversations.length}개</span></div><div class="admin-chat-rooms" data-chat-rooms>${body}</div><script src="/admin/assets/admin-chat-list.js?v=20260828-1" defer></script>`;
     res.send(adminLayout('실시간 문의', content, res.locals.adminEmail, 'chats'));
   } catch (error) { next(error); }
 });
