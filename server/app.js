@@ -185,9 +185,8 @@ async function saveComments(slug, comments) {
   await fs.rename(temporaryFile, target);
 }
 
-async function sendDiscordCommentNotification(post, comment) {
+async function sendDiscordCommentNotification({ isReply, createdAt }) {
   if (!discordWebhookUrl) return;
-  const excerpt = comment.content.length > 500 ? `${comment.content.slice(0, 497)}...` : comment.content;
   const adminCommentsUrl = publicSiteUrl ? `${publicSiteUrl}/admin/comments/` : null;
   const response = await fetch(discordWebhookUrl, {
     method: 'POST',
@@ -197,15 +196,10 @@ async function sendDiscordCommentNotification(post, comment) {
       username: 'Tech Notes',
       allowed_mentions: { parse: [] },
       embeds: [{
-        title: comment.parentAuthor ? '새 답글이 작성되었습니다' : '새 댓글이 작성되었습니다',
-        description: excerpt,
+        title: isReply ? '새 답글이 작성되었습니다' : '새 댓글이 작성되었습니다',
+        description: '관리자 콘솔에서 새 댓글을 확인하세요.',
         color: 0x5865f2,
-        fields: [
-          { name: '글', value: post.title, inline: true },
-          { name: '작성자', value: comment.author, inline: true },
-          ...(comment.parentAuthor ? [{ name: '원댓글 작성자', value: comment.parentAuthor, inline: true }] : []),
-        ],
-        timestamp: comment.createdAt,
+        timestamp: createdAt,
         ...(adminCommentsUrl ? { url: adminCommentsUrl } : {}),
       }],
     }),
@@ -213,10 +207,11 @@ async function sendDiscordCommentNotification(post, comment) {
   if (!response.ok) throw new Error(`Discord responded with HTTP ${response.status}`);
 }
 
-function queueDiscordCommentNotification(post, comment) {
+function queueDiscordCommentNotification(comment) {
   if (!discordWebhookUrl) return;
+  const notification = { isReply: Boolean(comment.parentAuthor), createdAt: comment.createdAt };
   setImmediate(() => {
-    sendDiscordCommentNotification(post, comment).catch((error) => {
+    sendDiscordCommentNotification(notification).catch((error) => {
       console.error('Discord comment notification failed:', error.message);
     });
   });
@@ -624,7 +619,7 @@ app.get('/study/chat/session/', (req, res, next) => chatService.session(req, res
 app.get('/study/privacy/', async (_req, res, next) => {
   try {
     const posts = await loadPosts();
-    const content = `<article class="study-note study-privacy"><header class="study-note-header"><p class="study-note-date">시행일 2026. 08. 28.</p><h1>개인정보 처리방침</h1><p>Tech Notes는 필요한 범위에서만 정보를 처리하고 안전하게 관리합니다.</p></header><div class="study-note-content"><section><h2>1. 처리하는 정보와 목적</h2><div class="study-table-scroll" role="region" aria-label="개인정보 처리 항목 표" tabindex="0"><table><thead><tr><th>기능</th><th>처리 항목</th><th>목적</th></tr></thead><tbody><tr><td>방문 통계</td><td>방문 일자, 조회 경로, 글 식별자, 국가 코드, IP 주소와 브라우저 정보로 생성한 일별 익명 식별값</td><td>방문자·조회 수 집계와 서비스 개선</td></tr><tr><td>댓글·답글</td><td>작성자명, 내용, 작성 시각</td><td>글에 대한 의견과 질문 제공</td></tr><tr><td>1:1 문의</td><td>문의·답변 내용, 작성 시각, 마스킹된 IP 대역, 임의의 채팅방 식별자와 인증 토큰의 해시</td><td>실시간 문의 응대와 악용 방지</td></tr><tr><td>접근·환경 설정</td><td>공유 링크 및 채팅 세션 쿠키, 테마와 읽음 상태</td><td>접근 권한 유지, 문의 연결, 화면 설정 저장</td></tr></tbody></table></div><p>방문 통계에서는 원본 IP 주소와 브라우저 정보를 저장하지 않습니다. 서버가 요청을 처리할 때 일별 익명 식별값 생성에만 사용하며, 국가는 Cloudflare가 제공하는 국가 코드만 기록합니다.</p></section><section><h2>2. 보유 및 이용 기간</h2><ul><li>방문 통계의 일별 익명 식별값: 31일 후 삭제</li><li>개인을 식별하지 않는 날짜·글·국가별 합계: 서비스 운영 기간 동안 보관</li><li>댓글과 답글: 해당 댓글 또는 글을 삭제할 때까지 공개·보관</li><li>1:1 문의: 마지막 활동일로부터 90일 후 자동 삭제하거나 요청 시 삭제</li><li>공유 링크 및 채팅 세션 쿠키: 브라우저에 최대 30일간 저장</li><li>테마와 읽음 상태: 브라우저 저장 공간에서 직접 삭제할 때까지 저장</li></ul></section><section><h2>3. 공개되는 정보와 외부 서비스</h2><p>댓글과 답글에 입력한 작성자명 및 내용은 Tech Notes 방문자에게 공개됩니다. 비밀번호, 연락처 등 공개를 원하지 않는 정보는 작성하지 마세요.</p><p>서비스 제공과 보호를 위해 Cloudflare의 네트워크·접근 제어 기능을 사용합니다. 새 댓글 알림에는 댓글 내용과 작성자명이 Discord로 전송될 수 있습니다. 1:1 문의 알림은 문의 내용, IP 주소, 채팅방 식별자 없이 새 문의가 있다는 일반 알림과 관리자 문의 목록 링크만 Discord로 전송합니다.</p></section><section><h2>4. 쿠키와 브라우저 저장 공간</h2><p>공유 링크 접근 상태와 채팅 연결을 유지하기 위해 필수 쿠키를 사용합니다. 테마 및 채팅 읽음 상태는 브라우저의 localStorage에 저장됩니다. 브라우저 설정에서 이를 삭제할 수 있으나 공유 페이지 재인증, 테마 초기화 또는 기존 문의 연결 해제가 발생할 수 있습니다.</p></section><section><h2>5. 이용자의 권리</h2><p>자신이 작성한 댓글 또는 문의 정보의 열람·정정·삭제를 요청할 수 있습니다. 화면 오른쪽 아래의 1:1 문의를 통해 요청하면 본인 확인에 필요한 최소한의 절차를 거쳐 처리합니다.</p></section><section><h2>6. 안전성 확보 조치</h2><p>관리자 화면 접근 제어, 전송 구간 암호화, 인증 토큰 해시 저장, IP 주소 마스킹, 저장 파일 권한 제한과 자동 보관 기간 적용 등의 조치를 사용합니다.</p></section><section><h2>7. 개인정보 보호 문의</h2><p>운영자 및 개인정보 보호 담당자는 Seungje Lee입니다. 개인정보 처리와 관련된 문의 및 권리 행사는 화면 오른쪽 아래의 1:1 문의를 이용해 주세요.</p></section><section><h2>8. 처리방침 변경</h2><p>처리 항목이나 기능이 달라지면 이 페이지의 내용과 시행일을 갱신합니다.</p></section></div><footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
+    const content = `<article class="study-note study-privacy"><header class="study-note-header"><p class="study-note-date">시행일 2026. 08. 28.</p><h1>개인정보 처리방침</h1><p>Tech Notes는 필요한 범위에서만 정보를 처리하고 안전하게 관리합니다.</p></header><div class="study-note-content"><section><h2>1. 처리하는 정보와 목적</h2><div class="study-table-scroll" role="region" aria-label="개인정보 처리 항목 표" tabindex="0"><table><thead><tr><th>기능</th><th>처리 항목</th><th>목적</th></tr></thead><tbody><tr><td>방문 통계</td><td>방문 일자, 조회 경로, 글 식별자, 국가 코드, IP 주소와 브라우저 정보로 생성한 일별 익명 식별값</td><td>방문자·조회 수 집계와 서비스 개선</td></tr><tr><td>댓글·답글</td><td>작성자명, 내용, 작성 시각</td><td>글에 대한 의견과 질문 제공</td></tr><tr><td>1:1 문의</td><td>문의·답변 내용, 작성 시각, 마스킹된 IP 대역, 임의의 채팅방 식별자와 인증 토큰의 해시</td><td>실시간 문의 응대와 악용 방지</td></tr><tr><td>접근·환경 설정</td><td>공유 링크 및 채팅 세션 쿠키, 테마와 읽음 상태</td><td>접근 권한 유지, 문의 연결, 화면 설정 저장</td></tr></tbody></table></div><p>방문 통계에서는 원본 IP 주소와 브라우저 정보를 저장하지 않습니다. 서버가 요청을 처리할 때 일별 익명 식별값 생성에만 사용하며, 국가는 Cloudflare가 제공하는 국가 코드만 기록합니다.</p></section><section><h2>2. 보유 및 이용 기간</h2><ul><li>방문 통계의 일별 익명 식별값: 31일 후 삭제</li><li>개인을 식별하지 않는 날짜·글·국가별 합계: 서비스 운영 기간 동안 보관</li><li>댓글과 답글: 해당 댓글 또는 글을 삭제할 때까지 공개·보관</li><li>1:1 문의: 마지막 활동일로부터 90일 후 자동 삭제하거나 요청 시 삭제</li><li>공유 링크 및 채팅 세션 쿠키: 브라우저에 최대 30일간 저장</li><li>테마와 읽음 상태: 브라우저 저장 공간에서 직접 삭제할 때까지 저장</li></ul></section><section><h2>3. 공개되는 정보와 외부 서비스</h2><p>댓글과 답글에 입력한 작성자명 및 내용은 Tech Notes 방문자에게 공개됩니다. 비밀번호, 연락처 등 공개를 원하지 않는 정보는 작성하지 마세요.</p><p>서비스 제공과 보호를 위해 Cloudflare의 네트워크·접근 제어 기능을 사용합니다. Discord에는 새 댓글·답글 또는 새 문의가 있다는 일반 알림, 작성 시각과 해당 관리자 목록 링크만 전송합니다. 작성자명, 댓글·문의 내용, IP 주소, 글 제목과 채팅방 식별자는 전송하지 않습니다.</p></section><section><h2>4. 쿠키와 브라우저 저장 공간</h2><p>공유 링크 접근 상태와 채팅 연결을 유지하기 위해 필수 쿠키를 사용합니다. 테마 및 채팅 읽음 상태는 브라우저의 localStorage에 저장됩니다. 브라우저 설정에서 이를 삭제할 수 있으나 공유 페이지 재인증, 테마 초기화 또는 기존 문의 연결 해제가 발생할 수 있습니다.</p></section><section><h2>5. 이용자의 권리</h2><p>자신이 작성한 댓글 또는 문의 정보의 열람·정정·삭제를 요청할 수 있습니다. 화면 오른쪽 아래의 1:1 문의를 통해 요청하면 본인 확인에 필요한 최소한의 절차를 거쳐 처리합니다.</p></section><section><h2>6. 안전성 확보 조치</h2><p>관리자 화면 접근 제어, 전송 구간 암호화, 인증 토큰 해시 저장, IP 주소 마스킹, 저장 파일 권한 제한과 자동 보관 기간 적용 등의 조치를 사용합니다.</p></section><section><h2>7. 개인정보 보호 문의</h2><p>운영자 및 개인정보 보호 담당자는 Seungje Lee입니다. 개인정보 처리와 관련된 문의 및 권리 행사는 화면 오른쪽 아래의 1:1 문의를 이용해 주세요.</p></section><section><h2>8. 처리방침 변경</h2><p>처리 항목이나 기능이 달라지면 이 페이지의 내용과 시행일을 갱신합니다.</p></section></div><footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
     res.send(studyLayout({ title: '개인정보 처리방침', description: 'Tech Notes 개인정보 처리방침', content, posts }));
   } catch (error) { next(error); }
 });
@@ -674,7 +669,7 @@ app.post('/study/:slug/comments/', requireSameOrigin, async (req, res, next) => 
       comments.push(comment);
       await saveComments(post.slug, comments);
     });
-    queueDiscordCommentNotification(post, comment);
+    queueDiscordCommentNotification(comment);
     res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
   } catch (error) { next(error); }
 });
@@ -700,7 +695,7 @@ app.post('/study/:slug/comments/:commentId/replies/', requireSameOrigin, async (
       notification = { ...reply, parentAuthor: parent.author };
     });
     if (!notification) return res.status(404).send('Not found');
-    queueDiscordCommentNotification(post, notification);
+    queueDiscordCommentNotification(notification);
     res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
   } catch (error) { next(error); }
 });
