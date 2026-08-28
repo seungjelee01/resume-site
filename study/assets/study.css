@@ -869,6 +869,8 @@ a {
 .study-chat ol { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 16px; overflow-y: auto; list-style: none; }
 .study-chat li { max-width: 82%; }
 .study-chat li.is-visitor { align-self: flex-end; }
+.study-chat-sender { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; color: var(--study-text); font-size: 12px; font-weight: 600; }
+.study-chat-sender img { width: 24px; height: 24px; border: 1px solid var(--study-border); border-radius: 50%; object-fit: cover; }
 .study-chat li p { margin: 0; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--study-surface); }
 .study-chat li.is-visitor p { color: #fff; background: var(--study-accent); }
 .study-chat li time { display: block; margin-top: 3px; color: var(--study-muted); font-size: 10px; text-align: right; }

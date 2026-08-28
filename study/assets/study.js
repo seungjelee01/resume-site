@@ -41,6 +41,19 @@ function initStudyChat() {
         const item = document.createElement('li');
         item.dataset.messageId = message.id;
         item.className = message.sender === 'admin' ? 'is-admin' : 'is-visitor';
+        if (message.sender === 'admin') {
+            const sender = document.createElement('div');
+            sender.className = 'study-chat-sender';
+            const profile = document.createElement('img');
+            profile.src = '/study/owner-profile.png';
+            profile.alt = '';
+            profile.width = 24;
+            profile.height = 24;
+            const name = document.createElement('span');
+            name.textContent = 'Seungje Lee';
+            sender.append(profile, name);
+            item.append(sender);
+        }
         const content = document.createElement('p');
         content.textContent = message.content;
         const time = document.createElement('time');
