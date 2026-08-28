@@ -594,7 +594,7 @@ function studySidebar(posts) {
   }, new Map());
   const tags = [...new Set(posts.flatMap((post) => post.tags))].sort((a, b) => a.localeCompare(b, 'ko'));
   return `<aside class="study-sidebar" id="study-sidebar" data-study-sidebar>
-    <div class="sidebar-header"><div class="study-brand-group"><span class="study-brand">Tech Notes</span><span class="study-owner-brand">by <span>Seungje</span> <strong>Lee</strong></span></div><button class="sidebar-close" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-close>×</button></div>
+    <div class="sidebar-header"><div class="study-brand-group"><a class="study-brand" href="/study/">Tech Notes</a><span class="study-owner-brand">by <span>Seungje</span> <strong>Lee</strong></span></div><button class="sidebar-close" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-close>×</button></div>
     <nav class="sidebar-nav" aria-label="학습 기록 탐색"><a class="sidebar-primary-link" href="/study/">전체 기록</a>
       <form class="sidebar-search" action="/study/" role="search" data-study-search-form><label for="study-search">글 검색</label><div><input id="study-search" type="search" name="q" placeholder="제목, 카테고리, 태그" autocomplete="off" data-study-search><button type="submit" aria-label="검색">⌕</button></div></form>
       <section class="sidebar-group"><h2>카테고리</h2><div class="sidebar-categories">${sortedCategories.map(([category, count]) => `<a href="/study/?category=${encodeURIComponent(category)}" data-sidebar-category="${escapeHtml(category)}"><span>${escapeHtml(category)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
