@@ -9,6 +9,7 @@ const translations = {
   '비공개 파일 저장소': 'Private File Storage',
   '댓글 관리': 'Manage Comments',
   '실시간 문의': 'Live Inquiries',
+  '방문자 통계': 'Visitor Analytics',
   'Tech Notes 보기': 'View Tech Notes',
   '이력서 보기': 'View Résumé',
   설정: 'Settings',

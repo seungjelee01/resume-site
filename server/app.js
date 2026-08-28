@@ -8,6 +8,7 @@ import matter from 'gray-matter';
 import { marked } from 'marked';
 import multer from 'multer';
 import sanitizeHtml from 'sanitize-html';
+import { createAnalyticsService } from './analytics-service.js';
 import { createChatService } from './chat-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +39,11 @@ const chatsDir = process.env.CHATS_DIR
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'chats')
     : path.join(rootDir, '_chats');
+const analyticsDir = process.env.ANALYTICS_DIR
+  ? path.resolve(process.env.ANALYTICS_DIR)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'analytics')
+    : path.join(rootDir, '_analytics');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
@@ -216,12 +222,11 @@ function queueDiscordCommentNotification(post, comment) {
   });
 }
 
-function queueDiscordChatNotification(conversation, message) {
+function queueDiscordChatNotification(_conversation, message) {
   if (!discordChatWebhookUrl) return;
   setImmediate(async () => {
     try {
-      const excerpt = message.content.length > 500 ? `${message.content.slice(0, 497)}...` : message.content;
-      const adminUrl = publicSiteUrl ? `${publicSiteUrl}/admin/chats/${conversation.id}/` : null;
+      const adminUrl = publicSiteUrl ? `${publicSiteUrl}/admin/chats/` : null;
       const response = await fetch(discordChatWebhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -231,9 +236,8 @@ function queueDiscordChatNotification(conversation, message) {
           allowed_mentions: { parse: [] },
           embeds: [{
             title: '새 실시간 문의가 도착했습니다',
-            description: excerpt,
+            description: '관리자 콘솔에서 새 문의를 확인하세요.',
             color: 0x5865f2,
-            fields: [{ name: '방문자', value: `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`, inline: true }],
             timestamp: message.createdAt,
             ...(adminUrl ? { url: adminUrl } : {}),
           }],
@@ -353,6 +357,10 @@ const chatService = createChatService({
     maxVisitorConnectionsPerRoom: positiveInteger(process.env.CHAT_MAX_VISITOR_CONNECTIONS_PER_ROOM, 3),
   },
 });
+const analyticsService = createAnalyticsService({ directory: analyticsDir, production: process.env.NODE_ENV === 'production' });
+function trackStudyVisit(req, page) {
+  analyticsService.track(req, page).catch((error) => console.error('Study analytics tracking failed:', error.message));
+}
 
 app.use('/resume', requireResumeShare);
 app.use('/study', requireStudyShare);
@@ -575,7 +583,7 @@ function renderComments(post, comments) {
       return `<li><header><strong>${escapeHtml(comment.author)}</strong><time datetime="${escapeHtml(comment.createdAt)}">${escapeHtml(formatCommentDate(comment.createdAt))}</time></header><p>${escapeHtml(comment.content)}</p>${replyList}${replyForm}</li>`;
     }).join('')}</ol>`
     : '<p class="study-comments-empty">첫 댓글을 남겨 보세요.</p>';
-  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${commentCount}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">댓글 등록</button></form></section>`;
+  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${commentCount}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><p class="study-comment-privacy">등록한 이름과 댓글은 누구나 볼 수 있습니다. <a href="/study/privacy/">개인정보 처리방침</a></p><button type="submit">댓글 등록</button></form></section>`;
 }
 
 function studySidebar(posts) {
@@ -597,7 +605,7 @@ function studySidebar(posts) {
       <section class="sidebar-group"><h2>카테고리</h2><div class="sidebar-categories">${sortedCategories.map(([category, count]) => `<a href="/study/?category=${encodeURIComponent(category)}" data-sidebar-category="${escapeHtml(category)}"><span>${escapeHtml(category)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
       <section class="sidebar-group"><h2>월별 기록</h2><div class="sidebar-months">${[...months].map(([month, count]) => `<a href="/study/#month-${month}"><span>${escapeHtml(month)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
       <section class="sidebar-group"><h2>주제별 태그</h2><div class="sidebar-tags">${tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}" data-sidebar-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div></section>
-    </nav><div class="study-sidebar-footer"><button class="study-settings-button" type="button" aria-label="설정" title="설정" data-study-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div>
+    </nav><div class="study-sidebar-footer"><a class="study-privacy-link" href="/study/privacy/">개인정보 처리방침</a><button class="study-settings-button" type="button" aria-label="설정" title="설정" data-study-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div>
   </aside>`;
 }
 
@@ -606,12 +614,20 @@ function studyLayout({ title = '', description = '', content, posts, isHome = fa
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
     <title>${pageTitle}</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#ffffff">
-    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260828-7"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260828-5" defer></script></head>
+    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260828-8"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260828-5" defer></script></head>
     <body class="study-page"><a class="skip-link" href="#study-content">본문으로 바로가기</a><header class="mobile-study-header"><button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>☰</button><a href="/study/">Tech Notes</a></header>
-    ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><button class="study-chat-open" type="button" aria-label="Seungje Lee에게 문의하기" aria-expanded="false" aria-controls="study-chat" data-chat-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>문의</span><b data-chat-unread hidden>0</b></button><section class="study-chat" id="study-chat" aria-label="Seungje Lee에게 문의하기" data-chat hidden><header><div><strong>Seungje Lee에게 문의하기</strong><span data-chat-status>연결 준비 중</span></div><button type="button" aria-label="채팅 닫기" data-chat-close>×</button></header><ol aria-live="polite" data-chat-messages></ol><form data-chat-form><label for="chat-message">메시지</label><textarea id="chat-message" maxlength="1000" rows="2" required data-chat-input></textarea><button type="submit">전송</button></form></section><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
+    ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><button class="study-chat-open" type="button" aria-label="Seungje Lee에게 문의하기" aria-expanded="false" aria-controls="study-chat" data-chat-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>문의</span><b data-chat-unread hidden>0</b></button><section class="study-chat" id="study-chat" aria-label="Seungje Lee에게 문의하기" data-chat hidden><header><div><strong>Seungje Lee에게 문의하기</strong><span data-chat-status>연결 준비 중</span></div><button type="button" aria-label="채팅 닫기" data-chat-close>×</button></header><ol aria-live="polite" data-chat-messages></ol><p class="study-chat-privacy">문의 내용은 최근 활동일로부터 90일간 보관됩니다. <a href="/study/privacy/">자세히</a></p><form data-chat-form><label for="chat-message">메시지</label><textarea id="chat-message" maxlength="1000" rows="2" required data-chat-input></textarea><button type="submit">전송</button></form></section><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
 }
 
 app.get('/study/chat/session/', (req, res, next) => chatService.session(req, res).catch(next));
+
+app.get('/study/privacy/', async (_req, res, next) => {
+  try {
+    const posts = await loadPosts();
+    const content = `<article class="study-note study-privacy"><header class="study-note-header"><p class="study-note-date">시행일 2026. 08. 28.</p><h1>개인정보 처리방침</h1><p>Tech Notes는 필요한 범위에서만 정보를 처리하고 안전하게 관리합니다.</p></header><div class="study-note-content"><section><h2>1. 처리하는 정보와 목적</h2><div class="study-table-scroll" role="region" aria-label="개인정보 처리 항목 표" tabindex="0"><table><thead><tr><th>기능</th><th>처리 항목</th><th>목적</th></tr></thead><tbody><tr><td>방문 통계</td><td>방문 일자, 조회 경로, 글 식별자, 국가 코드, IP 주소와 브라우저 정보로 생성한 일별 익명 식별값</td><td>방문자·조회 수 집계와 서비스 개선</td></tr><tr><td>댓글·답글</td><td>작성자명, 내용, 작성 시각</td><td>글에 대한 의견과 질문 제공</td></tr><tr><td>1:1 문의</td><td>문의·답변 내용, 작성 시각, 마스킹된 IP 대역, 임의의 채팅방 식별자와 인증 토큰의 해시</td><td>실시간 문의 응대와 악용 방지</td></tr><tr><td>접근·환경 설정</td><td>공유 링크 및 채팅 세션 쿠키, 테마와 읽음 상태</td><td>접근 권한 유지, 문의 연결, 화면 설정 저장</td></tr></tbody></table></div><p>방문 통계에서는 원본 IP 주소와 브라우저 정보를 저장하지 않습니다. 서버가 요청을 처리할 때 일별 익명 식별값 생성에만 사용하며, 국가는 Cloudflare가 제공하는 국가 코드만 기록합니다.</p></section><section><h2>2. 보유 및 이용 기간</h2><ul><li>방문 통계의 일별 익명 식별값: 31일 후 삭제</li><li>개인을 식별하지 않는 날짜·글·국가별 합계: 서비스 운영 기간 동안 보관</li><li>댓글과 답글: 해당 댓글 또는 글을 삭제할 때까지 공개·보관</li><li>1:1 문의: 마지막 활동일로부터 90일 후 자동 삭제하거나 요청 시 삭제</li><li>공유 링크 및 채팅 세션 쿠키: 브라우저에 최대 30일간 저장</li><li>테마와 읽음 상태: 브라우저 저장 공간에서 직접 삭제할 때까지 저장</li></ul></section><section><h2>3. 공개되는 정보와 외부 서비스</h2><p>댓글과 답글에 입력한 작성자명 및 내용은 Tech Notes 방문자에게 공개됩니다. 비밀번호, 연락처 등 공개를 원하지 않는 정보는 작성하지 마세요.</p><p>서비스 제공과 보호를 위해 Cloudflare의 네트워크·접근 제어 기능을 사용합니다. 새 댓글 알림에는 댓글 내용과 작성자명이 Discord로 전송될 수 있습니다. 1:1 문의 알림은 문의 내용, IP 주소, 채팅방 식별자 없이 새 문의가 있다는 일반 알림과 관리자 문의 목록 링크만 Discord로 전송합니다.</p></section><section><h2>4. 쿠키와 브라우저 저장 공간</h2><p>공유 링크 접근 상태와 채팅 연결을 유지하기 위해 필수 쿠키를 사용합니다. 테마 및 채팅 읽음 상태는 브라우저의 localStorage에 저장됩니다. 브라우저 설정에서 이를 삭제할 수 있으나 공유 페이지 재인증, 테마 초기화 또는 기존 문의 연결 해제가 발생할 수 있습니다.</p></section><section><h2>5. 이용자의 권리</h2><p>자신이 작성한 댓글 또는 문의 정보의 열람·정정·삭제를 요청할 수 있습니다. 화면 오른쪽 아래의 1:1 문의를 통해 요청하면 본인 확인에 필요한 최소한의 절차를 거쳐 처리합니다.</p></section><section><h2>6. 안전성 확보 조치</h2><p>관리자 화면 접근 제어, 전송 구간 암호화, 인증 토큰 해시 저장, IP 주소 마스킹, 저장 파일 권한 제한과 자동 보관 기간 적용 등의 조치를 사용합니다.</p></section><section><h2>7. 개인정보 보호 문의</h2><p>운영자 및 개인정보 보호 담당자는 Seungje Lee입니다. 개인정보 처리와 관련된 문의 및 권리 행사는 화면 오른쪽 아래의 1:1 문의를 이용해 주세요.</p></section><section><h2>8. 처리방침 변경</h2><p>처리 항목이나 기능이 달라지면 이 페이지의 내용과 시행일을 갱신합니다.</p></section></div><footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
+    res.send(studyLayout({ title: '개인정보 처리방침', description: 'Tech Notes 개인정보 처리방침', content, posts }));
+  } catch (error) { next(error); }
+});
 
 app.get('/study/', async (req, res, next) => {
   try {
@@ -625,6 +641,7 @@ app.get('/study/', async (req, res, next) => {
     const archive = posts.length ? [...groups].map(([month, items]) => `<section class="study-month" id="month-${month}" data-study-month><h2>${month}</h2><div class="study-note-list">${items.map((post) => `<article class="study-note-card" data-study-note data-category="${escapeHtml(post.category)}" data-tags="${escapeHtml(post.tags.join('||'))}" data-search="${escapeHtml([post.title, post.category, ...post.tags].join(' '))}"><time datetime="${post.date}">${post.date.slice(5, 7)}월 ${post.date.slice(8)}일</time><a class="study-card-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h3><a href="/study/${encodeURIComponent(post.slug)}/">${escapeHtml(post.title)}</a></h3><div class="study-card-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></article>`).join('')}</div></section>`).join('') : '<section class="study-empty-state"><h2>첫 기록을 작성해 보세요.</h2></section>';
     const content = `<header class="study-home-header"><p class="study-eyebrow">TECH LEARNING NOTES</p><h1>개발 학습 기록</h1><p>데이터베이스, 백엔드, Linux와 클라우드 등 개발 과정에서 배운 내용을 정리합니다.</p></header><div class="study-filter-status" data-filter-status hidden><span data-filter-summary></span><a href="/study/">필터 해제</a></div><div class="study-archive" data-study-archive>${archive}</div><p class="study-empty-filter" data-empty-filter hidden>검색 조건에 해당하는 기록이 없습니다.</p>`;
     res.send(studyLayout({ title: '개발 학습 기록', description: '개발과 기술 학습 기록', content, posts, isHome: true }));
+    trackStudyVisit(req);
   } catch (error) { next(error); }
 });
 
@@ -638,6 +655,7 @@ app.get('/study/:slug/', async (req, res, next) => {
     const attachments = downloadableFiles.length ? `<section class="study-attachments"><h2>첨부 파일</h2><ul>${downloadableFiles.map((filename) => { const action = filename.toLowerCase().endsWith('.pdf') ? '다운로드' : '보기'; return `<li><a href="/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/"><code>${escapeHtml(filename)}</code> ${action}</a></li>`; }).join('')}</ul></section>` : '';
     const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${studyPostNavigation(posts, post)}${renderComments(post, comments)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
     res.send(studyLayout({ title: post.title, description: post.body.slice(0, 150), content, posts }));
+    trackStudyVisit(req, { slug: post.slug, title: post.title });
   } catch (error) { next(error); }
 });
 
@@ -726,12 +744,14 @@ function adminLayout(title, content, email, activeSection = '') {
   const icons = {
     dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
     notes: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h4M8 12h8M8 16h8"/></svg>',
+    analytics: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
     comments: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4z"/><path d="M8 8h8M8 12h5"/></svg>',
     chats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><circle cx="9" cy="10" r="1"/><circle cx="12" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg>',
     files: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   };
   const navItem = (section, href, label) => {
     const item = `<a${section === activeSection ? ' class="is-active" aria-current="page"' : ''} href="${href}">${icons[section]}<span>${label}</span></a>`;
+    if (section === 'notes') return `${item}<a${activeSection === 'analytics' ? ' class="is-active" aria-current="page"' : ''} href="/admin/analytics/">${icons.analytics}<span>방문자 통계</span></a>`;
     if (section !== 'comments') return item;
     return `${item}<a${activeSection === 'chats' ? ' class="is-active" aria-current="page"' : ''} href="/admin/chats/">${icons.chats}<span>실시간 문의</span></a>`;
   };
@@ -761,6 +781,23 @@ app.get('/admin/', async (_req, res, next) => {
     const memory = process.memoryUsage();
     const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 사용량</span><strong>${formatFileSize(memory.rss)}</strong><small>Node.js RSS 기준</small></section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
     res.send(adminLayout('대시보드', content, res.locals.adminEmail, 'dashboard'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/analytics/', async (_req, res, next) => {
+  try {
+    const stats = await analyticsService.summary();
+    const maxValue = Math.max(1, ...stats.daily.flatMap((day) => [day.views, day.visitors]));
+    const chart = stats.daily.map((day) => `<div class="analytics-day" title="${day.date} · 방문자 ${day.visitors} · 조회 ${day.views}"><div><i class="is-views" style="height:${Math.round(day.views / maxValue * 100)}%"></i><i class="is-visitors" style="height:${Math.round(day.visitors / maxValue * 100)}%"></i></div><span>${day.date.slice(8)}</span></div>`).join('');
+    const popularRows = stats.popularPosts.map((post, index) => `<tr><td>${index + 1}</td><td><a href="/study/${encodeURIComponent(post.slug)}/" target="_blank" rel="noopener">${escapeHtml(post.title)}</a></td><td>${post.views}</td></tr>`).join('');
+    const popular = popularRows ? `<div class="table-wrap analytics-popular"><table><thead><tr><th>순위</th><th>글</th><th>조회</th></tr></thead><tbody>${popularRows}</tbody></table></div>` : '<p class="private-empty">아직 집계된 글 조회가 없습니다.</p>';
+    const regionNames = new Intl.DisplayNames(['ko'], { type: 'region' });
+    const countryName = (code) => code === 'T1' ? 'Tor 네트워크' : code === 'XX' ? '확인 불가' : regionNames.of(code) || code;
+    const countryTotal = stats.countries.reduce((total, country) => total + country.visitors, 0);
+    const countryRows = stats.countries.map((country, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(countryName(country.code))} <small>${escapeHtml(country.code)}</small></td><td>${country.visitors}</td><td>${countryTotal ? (country.visitors / countryTotal * 100).toFixed(1) : '0.0'}%</td></tr>`).join('');
+    const countryTable = countryRows ? `<div class="table-wrap analytics-countries"><table><thead><tr><th>순위</th><th>국가</th><th>방문자</th><th>비율</th></tr></thead><tbody>${countryRows}</tbody></table></div>` : '<p class="private-empty">아직 집계된 국가 정보가 없습니다.</p>';
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-analytics.css?v=20260828-2"><div class="admin-title"><div><p>PRIVACY-FRIENDLY ANALYTICS</p><h1>방문자 통계</h1></div><span>현재 ${stats.activeVisitors}명</span></div><div class="analytics-metrics"><section><span>오늘</span><strong>${stats.today.visitors}명</strong><small>조회 ${stats.today.views}회</small></section><section><span>최근 7일</span><strong>${stats.sevenDays.visitors}명</strong><small>조회 ${stats.sevenDays.views}회</small></section><section><span>최근 30일</span><strong>${stats.thirtyDays.visitors}명</strong><small>조회 ${stats.thirtyDays.views}회</small></section><section><span>현재 활성</span><strong>${stats.activeVisitors}명</strong><small>최근 5분 기준</small></section></div><section class="analytics-section"><header><div><h2>최근 30일 추이</h2><p>일별 순 방문자와 페이지 조회</p></div><div class="analytics-legend"><span><i class="is-views"></i>조회</span><span><i class="is-visitors"></i>방문자</span></div></header><div class="analytics-chart">${chart}</div></section><div class="analytics-columns"><section class="analytics-section"><header><div><h2>인기 글</h2><p>최근 30일 조회 기준</p></div></header>${popular}</section><section class="analytics-section"><header><div><h2>방문 국가</h2><p>최근 30일 순 방문자 기준</p></div></header>${countryTable}</section></div><p class="analytics-privacy">원본 IP와 브라우저 정보는 저장하지 않으며, 일별 중복 집계를 막기 위한 익명 해시는 31일 후 삭제됩니다. 국가는 Cloudflare가 제공하는 국가 코드만 집계합니다.</p>`;
+    res.send(adminLayout('방문자 통계', content, res.locals.adminEmail, 'analytics'));
   } catch (error) { next(error); }
 });
 

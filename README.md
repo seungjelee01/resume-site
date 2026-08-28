@@ -13,6 +13,7 @@ The public repository contains the application code and UI implementation. Resum
 - Runtime Tech Notes access control for public or share-link-only visibility
 - Per-note visitor comments and one-level replies with administration management
 - Anonymous real-time inquiries with private administrator chat rooms
+- Privacy-friendly first-party Tech Notes visitor analytics
 - Python, SQL, PDF, and image upload validation
 - Independent private share links for the resume and Tech Notes
 - Persistent content storage separated from application releases
@@ -105,6 +106,7 @@ resume/
 - Markdown is sanitized before rendering.
 - Uploaded filenames, sizes, text encoding, and supported binary signatures are validated.
 - Comment input is escaped, length-limited, same-origin checked, and rate-limited.
+- Visitor analytics stores daily keyed hashes instead of raw IP addresses or user-agent strings and removes those hashes after 31 days.
 - The application binds to a loopback address by default.
 
 This repository should still be treated as public. Do not commit credentials, private documents, personal notes, or production environment files.

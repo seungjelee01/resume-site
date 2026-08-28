@@ -804,6 +804,20 @@ a {
     cursor: pointer;
 }
 
+.study-comment-privacy {
+    margin: -4px 0 0;
+    color: var(--study-muted);
+    font-size: 12px;
+}
+
+.study-comment-privacy a,
+.study-chat-privacy a,
+.study-privacy-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
 @media (max-width: 600px) {
     .study-reply-list,
     .study-reply-form form {
@@ -850,7 +864,7 @@ a {
     bottom: 24px;
     z-index: 21;
     display: grid;
-    grid-template-rows: auto minmax(220px, 1fr) auto;
+    grid-template-rows: auto minmax(220px, 1fr) auto auto;
     width: min(380px, calc(100vw - 32px));
     height: min(560px, calc(100vh - 48px));
     overflow: hidden;
@@ -874,6 +888,7 @@ a {
 .study-chat li p { margin: 0; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--study-surface); }
 .study-chat li.is-visitor p { color: #fff; background: var(--study-accent); }
 .study-chat li time { display: block; margin-top: 3px; color: var(--study-muted); font-size: 10px; text-align: right; }
+.study-chat-privacy { margin: 0; padding: 8px 12px; border-top: 1px solid var(--study-border); color: var(--study-muted); background: var(--study-surface); font-size: 11px; line-height: 1.5; }
 .study-chat form { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; border-top: 1px solid var(--study-border); background: var(--study-surface); }
 .study-chat form label { position: absolute; left: -10000px; }
 .study-chat textarea { min-height: 42px; padding: 10px; border: 1px solid var(--study-border); border-radius: 8px; color: var(--study-text); background: var(--study-bg); font: inherit; resize: none; }
@@ -886,10 +901,31 @@ a {
 
 .study-sidebar-footer {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     margin-top: auto;
     padding-top: 20px;
     border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.study-privacy-link {
+    color: #aab9c2;
+    font-size: 11px;
+}
+
+.study-privacy-link:hover,
+.study-privacy-link:focus-visible {
+    color: #fff;
+}
+
+.study-privacy .study-note-header > p:last-child {
+    max-width: 640px;
+    color: var(--study-muted);
+}
+
+.study-privacy .study-note-content section + section {
+    margin-top: 44px;
 }
 
 .study-settings-button {

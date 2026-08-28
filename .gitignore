@@ -9,6 +9,7 @@ _private_files/
 _site_settings.json
 _comments/
 _chats/
+_analytics/
 _study/*
 !_study/.gitkeep
 /ops/README.md
