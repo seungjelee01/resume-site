@@ -46,6 +46,7 @@ const studyShareToken = process.env.STUDY_SHARE_TOKEN || '';
 const discordWebhookUrl = parseDiscordWebhookUrl(process.env.DISCORD_COMMENT_WEBHOOK_URL || '', 'DISCORD_COMMENT_WEBHOOK_URL');
 const discordChatWebhookUrl = parseDiscordWebhookUrl(process.env.DISCORD_CHAT_WEBHOOK_URL || '', 'DISCORD_CHAT_WEBHOOK_URL');
 const publicSiteUrl = parsePublicSiteUrl(process.env.PUBLIC_SITE_URL || '');
+const positiveInteger = (value, fallback) => /^\d+$/.test(value || '') && Number(value) > 0 ? Number(value) : fallback;
 const defaultSiteSettings = Object.freeze({ studyAccess: studyShareToken ? 'shared' : 'public' });
 let siteSettingsCache;
 let commentWriteQueue = Promise.resolve();
@@ -344,6 +345,13 @@ const chatService = createChatService({
   allowLocalAdmin,
   canAccessStudy,
   notify: queueDiscordChatNotification,
+  limits: {
+    maxMessages: positiveInteger(process.env.CHAT_MAX_MESSAGES, 500),
+    maxRooms: positiveInteger(process.env.CHAT_MAX_ROOMS, 1000),
+    retentionDays: positiveInteger(process.env.CHAT_RETENTION_DAYS, 90),
+    maxConnections: positiveInteger(process.env.CHAT_MAX_CONNECTIONS, 500),
+    maxVisitorConnectionsPerRoom: positiveInteger(process.env.CHAT_MAX_VISITOR_CONNECTIONS_PER_ROOM, 3),
+  },
 });
 
 app.use('/resume', requireResumeShare);

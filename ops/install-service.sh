@@ -24,8 +24,8 @@ sudo install -d -o "$run_user" -g "$run_group" -m 0755 \
   "$deploy_root/shared/study" \
   "$deploy_root/shared/study-files" \
   "$deploy_root/shared/private-files" \
-  "$deploy_root/shared/comments" \
-  "$deploy_root/shared/chats"
+  "$deploy_root/shared/comments"
+sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/chats"
 
 if [[ ! -e "$deploy_root/shared/resume.env" ]]; then
   env_tmp=$(mktemp)

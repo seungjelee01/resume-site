@@ -28,13 +28,14 @@ function publicConversation(conversation) {
   };
 }
 
-export function createChatService({ directory, production, allowLocalAdmin, canAccessStudy, notify }) {
+export function createChatService({ directory, production, allowLocalAdmin, canAccessStudy, notify, limits }) {
   const clients = new Map();
   const adminListClients = new Set();
   const pendingSessions = new Map();
   const writeQueues = new Map();
   const rateLimits = new Map();
   const sessionRateLimits = new Map();
+  let lastRetentionCleanup = 0;
 
   const filePath = (id) => path.join(directory, `${id}.json`);
   const load = async (id) => JSON.parse(await fs.readFile(filePath(id), 'utf8'));
@@ -97,8 +98,30 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
     const payload = JSON.stringify({ type: 'room', room: roomSummary(conversation) });
     for (const socket of adminListClients) if (socket.readyState === WebSocket.OPEN) socket.send(payload);
   };
+  const cleanupExpired = async () => {
+    const now = Date.now();
+    if (now - lastRetentionCleanup < 60 * 60 * 1000) return;
+    lastRetentionCleanup = now;
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    await fs.chmod(directory, 0o700);
+    const cutoff = now - limits.retentionDays * 24 * 60 * 60 * 1000;
+    const files = (await fs.readdir(directory)).filter((name) => name.endsWith('.json') && idPattern.test(name.slice(0, -5)));
+    await Promise.all(files.map(async (name) => {
+      const id = name.slice(0, -5);
+      try {
+        const conversation = await load(id);
+        if (new Date(conversation.updatedAt).getTime() >= cutoff) return;
+        for (const socket of clients.get(id) || []) socket.close(1008, 'conversation expired');
+        clients.delete(id);
+        await fs.rm(filePath(id));
+        const payload = JSON.stringify({ type: 'room-deleted', id });
+        for (const socket of adminListClients) if (socket.readyState === WebSocket.OPEN) socket.send(payload);
+      } catch (error) { if (error.code !== 'ENOENT') console.error('Chat retention cleanup failed:', error.message); }
+    }));
+  };
 
   async function session(req, res) {
+    await cleanupExpired();
     let conversation = await authenticate(req.get('Cookie'));
     if (!conversation) {
       const address = production ? req.get('Cf-Connecting-Ip') || req.ip : req.ip;
@@ -109,7 +132,9 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
       for (const [id, pending] of pendingSessions) {
         if (nowTime - new Date(pending.createdAt).getTime() > 30 * 60 * 1000) pendingSessions.delete(id);
       }
-      if (pendingSessions.size >= 1000) return res.status(503).json({ error: '현재 새 문의를 시작할 수 없습니다.' });
+      if (pendingSessions.size >= limits.maxRooms) return res.status(503).json({ error: '현재 새 문의를 시작할 수 없습니다.' });
+      const storedRooms = (await fs.readdir(directory)).filter((name) => name.endsWith('.json') && idPattern.test(name.slice(0, -5))).length;
+      if (storedRooms + pendingSessions.size >= limits.maxRooms) return res.status(503).json({ error: '현재 새 문의를 시작할 수 없습니다.' });
       const recentSessions = (sessionRateLimits.get(address) || []).filter((time) => nowTime - time < 10 * 60 * 1000);
       if (recentSessions.length >= 5) return res.status(429).json({ error: '잠시 후 다시 시도하세요.' });
       recentSessions.push(nowTime);
@@ -134,7 +159,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
   }
 
   async function list() {
-    await fs.mkdir(directory, { recursive: true });
+    await cleanupExpired();
     const files = (await fs.readdir(directory)).filter((name) => idPattern.test(name.slice(0, -5)) && name.endsWith('.json'));
     const conversations = await Promise.all(files.map(async (name) => load(name.slice(0, -5))));
     return conversations.filter((conversation) => conversation.messages.length > 0).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -165,6 +190,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
         if (!['/study/ws/chat', '/admin/ws/chat', '/admin/ws/chat-list'].includes(url.pathname)) return socket.destroy();
         const origin = new URL(request.headers.origin || 'invalid:');
         if (origin.host !== request.headers.host) return socket.destroy();
+        if (webSocketServer.clients.size >= limits.maxConnections) return socket.destroy();
         const isAdminList = url.pathname === '/admin/ws/chat-list';
         const isAdmin = url.pathname.startsWith('/admin/ws/');
         let conversation;
@@ -187,6 +213,10 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
         return;
       }
       const id = conversation.id;
+      if (!isAdmin && [...(clients.get(id) || [])].filter((client) => !client.isAdmin).length >= limits.maxVisitorConnectionsPerRoom) {
+        socket.close(1013, 'too many connections');
+        return;
+      }
       if (!clients.has(id)) clients.set(id, new Set());
       clients.get(id).add(socket);
       socket.isAdmin = isAdmin;
@@ -201,6 +231,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
           const saved = await update(id, async () => {
             const current = await loadAvailable(id);
             if (!current) throw new Error('문의 세션이 만료되었습니다. 채팅창을 다시 열어 주세요.');
+            if (current.messages.length >= limits.maxMessages) throw new Error(`한 문의에서는 메시지를 ${limits.maxMessages}개까지 보낼 수 있습니다.`);
             current.messages.push(message);
             current.updatedAt = message.createdAt;
             const adminIsViewing = [...(clients.get(id) || [])].some((client) => client.isAdmin && client.readyState === WebSocket.OPEN);
