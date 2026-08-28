@@ -706,8 +706,21 @@ a {
     overflow-wrap: anywhere;
 }
 
+.study-replies {
+    margin-top: 16px;
+}
+
+.study-replies > summary,
+.study-reply-form summary {
+    width: max-content;
+    color: var(--study-accent);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
 .study-reply-list {
-    margin: 18px 0 0 24px;
+    margin: 8px 0 0 24px;
     padding: 0 0 0 18px;
     border-left: 2px solid var(--study-border);
     list-style: none;
@@ -724,14 +737,6 @@ a {
 
 .study-reply-form {
     margin-top: 14px;
-}
-
-.study-reply-form summary {
-    width: max-content;
-    color: var(--study-accent);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
 }
 
 .study-reply-form form {
