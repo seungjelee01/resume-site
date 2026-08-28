@@ -2,7 +2,78 @@ document.addEventListener('DOMContentLoaded', () => {
     initStudyTheme();
     initStudySidebar();
     initStudyTagFilter();
+    initStudyChat();
 });
+
+function initStudyChat() {
+    const panel = document.querySelector('[data-chat]');
+    const openButton = document.querySelector('[data-chat-open]');
+    const closeButton = document.querySelector('[data-chat-close]');
+    const status = document.querySelector('[data-chat-status]');
+    const messages = document.querySelector('[data-chat-messages]');
+    const form = document.querySelector('[data-chat-form]');
+    const input = document.querySelector('[data-chat-input]');
+    if (!panel || !openButton || !closeButton || !status || !messages || !form || !input) return;
+    let socket;
+    let reconnectTimer;
+    let initialized = false;
+
+    const renderMessage = (message) => {
+        if (messages.querySelector(`[data-message-id="${CSS.escape(message.id)}"]`)) return;
+        const item = document.createElement('li');
+        item.dataset.messageId = message.id;
+        item.className = message.sender === 'admin' ? 'is-admin' : 'is-visitor';
+        const content = document.createElement('p');
+        content.textContent = message.content;
+        const time = document.createElement('time');
+        time.textContent = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt));
+        item.append(content, time);
+        messages.append(item);
+        messages.scrollTop = messages.scrollHeight;
+    };
+    const connect = async () => {
+        try {
+            if (!initialized) {
+                const response = await fetch('/study/chat/session/', { credentials: 'same-origin' });
+                if (!response.ok) throw new Error('문의 세션을 만들 수 없습니다.');
+                initialized = true;
+            }
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            socket = new WebSocket(`${protocol}//${location.host}/study/ws/chat`);
+            status.textContent = '연결 중';
+            socket.addEventListener('open', () => { status.textContent = '온라인'; });
+            socket.addEventListener('message', (event) => {
+                const payload = JSON.parse(event.data);
+                if (payload.type === 'ready') {
+                    messages.replaceChildren();
+                    payload.messages.forEach(renderMessage);
+                } else if (payload.type === 'message') renderMessage(payload.message);
+                else if (payload.type === 'error') status.textContent = payload.message;
+            });
+            socket.addEventListener('close', () => {
+                status.textContent = '재연결 중';
+                initialized = false;
+                clearTimeout(reconnectTimer);
+                reconnectTimer = setTimeout(connect, 2000);
+            });
+        } catch (error) { status.textContent = error.message; }
+    };
+    openButton.addEventListener('click', () => {
+        panel.hidden = false;
+        openButton.hidden = true;
+        openButton.setAttribute('aria-expanded', 'true');
+        if (!socket || socket.readyState > WebSocket.OPEN) connect();
+        input.focus();
+    });
+    closeButton.addEventListener('click', () => { panel.hidden = true; openButton.hidden = false; openButton.setAttribute('aria-expanded', 'false'); openButton.focus(); });
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const content = input.value.trim();
+        if (!content || socket?.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ type: 'message', content }));
+        input.value = '';
+    });
+}
 
 function initStudyTheme() {
     const dialog = document.querySelector('[data-study-settings]');

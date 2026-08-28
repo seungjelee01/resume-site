@@ -24,12 +24,13 @@ sudo install -d -o "$run_user" -g "$run_group" -m 0755 \
   "$deploy_root/shared/study" \
   "$deploy_root/shared/study-files" \
   "$deploy_root/shared/private-files" \
-  "$deploy_root/shared/comments"
+  "$deploy_root/shared/comments" \
+  "$deploy_root/shared/chats"
 
 if [[ ! -e "$deploy_root/shared/resume.env" ]]; then
   env_tmp=$(mktemp)
   trap 'rm -f "$env_tmp" "${unit_tmp:-}"' EXIT
-  printf 'NODE_ENV=production\nHOST=127.0.0.1\nPORT=3000\nSTUDY_DIR=%s/shared/study\nSTUDY_FILES_DIR=%s/shared/study-files\nPRIVATE_FILES_DIR=%s/shared/private-files\nCOMMENTS_DIR=%s/shared/comments\n' "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" > "$env_tmp"
+  printf 'NODE_ENV=production\nHOST=127.0.0.1\nPORT=3000\nSTUDY_DIR=%s/shared/study\nSTUDY_FILES_DIR=%s/shared/study-files\nPRIVATE_FILES_DIR=%s/shared/private-files\nCOMMENTS_DIR=%s/shared/comments\nCHATS_DIR=%s/shared/chats\n' "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" > "$env_tmp"
   sudo install -o "$run_user" -g "$run_group" -m 0640 "$env_tmp" "$deploy_root/shared/resume.env"
 fi
 

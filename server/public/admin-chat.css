@@ -1,0 +1,23 @@
+.admin-chat-rooms { display: grid; gap: 10px; }
+.admin-chat-room { display: grid; gap: 7px; padding: 16px 18px; border: 1px solid var(--line); color: var(--text); background: var(--surface); text-decoration: none; }
+.admin-chat-room:hover { border-color: var(--accent); }
+.admin-chat-room div { display: flex; align-items: center; gap: 9px; }
+.admin-chat-room strong { color: var(--ink); }
+.admin-chat-room time { margin-left: auto; color: var(--muted); font-size: 11px; }
+.admin-chat-room p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-chat-room small { color: var(--muted); }
+.admin-chat-unread { min-width: 22px; padding: 2px 6px; border-radius: 999px; color: #fff; background: var(--accent); font-size: 11px; text-align: center; }
+.admin-chat-panel { display: grid; grid-template-rows: auto minmax(340px, 58vh) auto; border: 1px solid var(--line); background: var(--surface); }
+.admin-chat-connection { margin: 0; padding: 9px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.admin-chat-panel ol { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 20px; overflow-y: auto; list-style: none; }
+.admin-chat-panel li { max-width: 78%; }
+.admin-chat-panel li.is-admin { align-self: flex-end; }
+.admin-chat-panel li span, .admin-chat-panel li time { display: block; color: var(--muted); font-size: 10px; }
+.admin-chat-panel li p { margin: 4px 0; padding: 10px 12px; border-radius: 9px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); }
+.admin-chat-panel li.is-admin p { color: #fff; background: var(--accent); }
+.admin-chat-panel li.is-admin time { text-align: right; }
+.admin-chat-panel form { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px; border-top: 1px solid var(--line); }
+.admin-chat-panel form label { position: absolute; left: -10000px; }
+.admin-chat-panel form textarea { min-height: 62px; }
+.admin-chat-delete { margin-top: 18px; text-align: right; }
+@media (max-width: 700px) { .admin-chat-room div { align-items: flex-start; flex-wrap: wrap; } .admin-chat-room time { width: 100%; margin-left: 0; } .admin-chat-panel li { max-width: 90%; } }

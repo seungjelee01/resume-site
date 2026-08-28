@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -7,6 +8,7 @@ import matter from 'gray-matter';
 import { marked } from 'marked';
 import multer from 'multer';
 import sanitizeHtml from 'sanitize-html';
+import { createChatService } from './chat-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -31,6 +33,11 @@ const commentsDir = process.env.COMMENTS_DIR
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'comments')
     : path.join(rootDir, '_comments');
+const chatsDir = process.env.CHATS_DIR
+  ? path.resolve(process.env.CHATS_DIR)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'chats')
+    : path.join(rootDir, '_chats');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
@@ -207,6 +214,34 @@ function queueDiscordCommentNotification(post, comment) {
   });
 }
 
+function queueDiscordChatNotification(conversation, message) {
+  if (!discordWebhookUrl) return;
+  setImmediate(async () => {
+    try {
+      const excerpt = message.content.length > 500 ? `${message.content.slice(0, 497)}...` : message.content;
+      const adminUrl = publicSiteUrl ? `${publicSiteUrl}/admin/chats/${conversation.id}/` : null;
+      const response = await fetch(discordWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+        body: JSON.stringify({
+          username: 'Tech Notes',
+          allowed_mentions: { parse: [] },
+          embeds: [{
+            title: '새 실시간 문의가 도착했습니다',
+            description: excerpt,
+            color: 0x5865f2,
+            fields: [{ name: '방문자', value: `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`, inline: true }],
+            timestamp: message.createdAt,
+            ...(adminUrl ? { url: adminUrl } : {}),
+          }],
+        }),
+      });
+      if (!response.ok) throw new Error(`Discord responded with HTTP ${response.status}`);
+    } catch (error) { console.error('Discord chat notification failed:', error.message); }
+  });
+}
+
 async function loadAllComments(posts) {
   const groups = await Promise.all(posts.map(async (post) => ({ post, comments: await loadComments(post.slug) })));
   return groups.flatMap(({ post, comments }) => comments.flatMap((comment) => [
@@ -295,6 +330,19 @@ const requireStudyShare = shareAccess({
   cookiePath: '/study',
   acceptedCookies: [{ name: 'study_from_resume', value: resumeShareToken }],
   publicAccess: async () => (await loadSiteSettings()).studyAccess === 'public',
+});
+
+async function canAccessStudy(cookies) {
+  if (!studyShareToken || (await loadSiteSettings()).studyAccess === 'public') return true;
+  return tokensMatch(cookies.study_share, studyShareToken) || tokensMatch(cookies.study_from_resume, resumeShareToken);
+}
+
+const chatService = createChatService({
+  directory: chatsDir,
+  production: process.env.NODE_ENV === 'production',
+  allowLocalAdmin,
+  canAccessStudy,
+  notify: queueDiscordChatNotification,
 });
 
 app.use('/resume', requireResumeShare);
@@ -549,10 +597,12 @@ function studyLayout({ title = '', description = '', content, posts, isHome = fa
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
     <title>${pageTitle}</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#ffffff">
-    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260828-3"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260825-1" defer></script></head>
+    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260828-4"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260828-2" defer></script></head>
     <body class="study-page"><a class="skip-link" href="#study-content">본문으로 바로가기</a><header class="mobile-study-header"><button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>☰</button><a href="/study/">Tech Notes</a></header>
-    ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
+    ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><button class="study-chat-open" type="button" aria-expanded="false" aria-controls="study-chat" data-chat-open>1:1 문의</button><section class="study-chat" id="study-chat" aria-label="관리자 1대1 문의" data-chat hidden><header><div><strong>관리자에게 문의하기</strong><span data-chat-status>연결 준비 중</span></div><button type="button" aria-label="채팅 닫기" data-chat-close>×</button></header><ol aria-live="polite" data-chat-messages></ol><form data-chat-form><label for="chat-message">메시지</label><textarea id="chat-message" maxlength="1000" rows="2" required data-chat-input></textarea><button type="submit">전송</button></form></section><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
 }
+
+app.get('/study/chat/session/', (req, res, next) => chatService.session(req, res).catch(next));
 
 app.get('/study/', async (req, res, next) => {
   try {
@@ -668,9 +718,14 @@ function adminLayout(title, content, email, activeSection = '') {
     dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
     notes: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h4M8 12h8M8 16h8"/></svg>',
     comments: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4z"/><path d="M8 8h8M8 12h5"/></svg>',
+    chats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><circle cx="9" cy="10" r="1"/><circle cx="12" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg>',
     files: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   };
-  const navItem = (section, href, label) => `<a${section === activeSection ? ' class="is-active" aria-current="page"' : ''} href="${href}">${icons[section]}<span>${label}</span></a>`;
+  const navItem = (section, href, label) => {
+    const item = `<a${section === activeSection ? ' class="is-active" aria-current="page"' : ''} href="${href}">${icons[section]}<span>${label}</span></a>`;
+    if (section !== 'comments') return item;
+    return `${item}<a${activeSection === 'chats' ? ' class="is-active" aria-current="page"' : ''} href="/admin/chats/">${icons.chats}<span>실시간 문의</span></a>`;
+  };
   const resumeUrl = resumeShareToken ? `/resume/?share=${encodeURIComponent(resumeShareToken)}` : '/resume/';
   const studyAccess = siteSettingsCache?.studyAccess || defaultSiteSettings.studyAccess;
   const studyUrl = studyAccess === 'shared' && studyShareToken ? `/study/?share=${encodeURIComponent(studyShareToken)}` : '/study/';
@@ -755,6 +810,38 @@ app.post('/admin/comments/:slug/:commentId/replies/:replyId/delete', async (req,
       await saveComments(req.params.slug, comments);
     });
     res.redirect('/admin/comments/');
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/chats/', async (_req, res, next) => {
+  try {
+    const conversations = await chatService.list();
+    const rows = conversations.map((conversation) => {
+      const lastMessage = conversation.messages.at(-1);
+      const preview = lastMessage ? lastMessage.content.slice(0, 90) : '아직 메시지가 없습니다.';
+      const unread = conversation.unread ? `<span class="admin-chat-unread">${conversation.unread}</span>` : '';
+      return `<a class="admin-chat-room" href="/admin/chats/${conversation.id}/"><div><strong>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</strong>${unread}<time>${escapeHtml(formatCommentDate(conversation.updatedAt))}</time></div><p>${escapeHtml(preview)}</p><small>${escapeHtml(conversation.ipMasked)}</small></a>`;
+    }).join('');
+    const body = rows || '<p class="private-empty">접수된 실시간 문의가 없습니다.</p>';
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-1"><div class="admin-title"><div><p>LIVE INQUIRIES</p><h1>실시간 문의</h1></div><span>${conversations.length}개</span></div><div class="admin-chat-rooms">${body}</div>`;
+    res.send(adminLayout('실시간 문의', content, res.locals.adminEmail, 'chats'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/chats/:id/', async (req, res, next) => {
+  try {
+    const conversation = await chatService.get(req.params.id);
+    if (!conversation) return res.status(404).send('Not found');
+    const messages = conversation.messages.map((message) => `<li class="is-${message.sender}"><span>${message.sender === 'admin' ? '관리자' : `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`}</span><p>${escapeHtml(message.content)}</p><time>${escapeHtml(formatCommentDate(message.createdAt))}</time></li>`).join('');
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-1"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="1000" rows="3" required data-admin-chat-input></textarea><button class="button primary" type="submit">전송</button></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20260828-1" defer></script>`;
+    res.send(adminLayout('실시간 문의', content, res.locals.adminEmail, 'chats'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/chats/:id/delete', async (req, res, next) => {
+  try {
+    if (!(await chatService.remove(req.params.id))) return res.status(404).send('Not found');
+    res.redirect('/admin/chats/');
   } catch (error) { next(error); }
 });
 
@@ -897,4 +984,6 @@ app.use((error, _req, res, _next) => {
   res.status(400).send(`요청을 처리하지 못했습니다: ${escapeHtml(error.message)}`);
 });
 
-app.listen(port, host, () => console.log(`Resume server listening on http://${host}:${port}`));
+const server = http.createServer(app);
+chatService.attach(server);
+server.listen(port, host, () => console.log(`Resume server listening on http://${host}:${port}`));

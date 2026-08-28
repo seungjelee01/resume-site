@@ -12,6 +12,7 @@ The public repository contains the application code and UI implementation. Resum
 - Protected administration console for writing notes and managing files
 - Runtime Tech Notes access control for public or share-link-only visibility
 - Per-note visitor comments and one-level replies with administration management
+- Anonymous real-time inquiries with private administrator chat rooms
 - Python, SQL, PDF, and image upload validation
 - Independent private share links for the resume and Tech Notes
 - Persistent content storage separated from application releases
