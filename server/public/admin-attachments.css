@@ -97,6 +97,39 @@
     text-align: center;
 }
 
+.admin-comments-table td:nth-child(1) {
+    width: 150px;
+    white-space: nowrap;
+}
+
+.admin-comments-table td:nth-child(2) {
+    width: 220px;
+}
+
+.admin-comments-table td:nth-child(3) {
+    min-width: 280px;
+}
+
+.admin-comments-table form {
+    margin: 0;
+}
+
+.admin-comment-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.admin-comment-meta strong {
+    color: var(--ink);
+}
+
+.admin-comment-content {
+    margin: 7px 0 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .private-code {
     overflow-x: auto;
     padding: 20px;

@@ -11,6 +11,7 @@ The public repository contains the application code and UI implementation. Resum
 - Markdown-based Tech Notes with categories, tags, and chronological navigation
 - Protected administration console for writing notes and managing files
 - Runtime Tech Notes access control for public or share-link-only visibility
+- Per-note visitor comments with administration management
 - Python, SQL, PDF, and image upload validation
 - Independent private share links for the resume and Tech Notes
 - Persistent content storage separated from application releases
@@ -53,7 +54,7 @@ When `STUDY_SHARE_TOKEN` is configured, an administrator can switch Tech Notes b
 
 ## Content Storage
 
-Published Tech Notes are intentionally excluded from this repository. The application reads Markdown content from the directory configured by `STUDY_DIR`; uploaded public attachments and administrator-only files use separately configured persistent directories.
+Published Tech Notes are intentionally excluded from this repository. The application reads Markdown content from the directory configured by `STUDY_DIR`; uploaded public attachments, administrator-only files, and comments use separately configured persistent directories. Comments default to a `comments` directory next to `STUDY_DIR` and can be overridden with `COMMENTS_DIR`.
 
 For local testing, create Markdown files under `_study/` using `_templates/study-note.md`. Files in `_study/` are ignored by Git so personal notes cannot be committed accidentally.
 
@@ -102,6 +103,7 @@ resume/
 - State-changing administrator requests require a same-origin request.
 - Markdown is sanitized before rendering.
 - Uploaded filenames, sizes, text encoding, and supported binary signatures are validated.
+- Comment input is escaped, length-limited, same-origin checked, and rate-limited.
 - The application binds to a loopback address by default.
 
 This repository should still be treated as public. Do not commit credentials, private documents, personal notes, or production environment files.

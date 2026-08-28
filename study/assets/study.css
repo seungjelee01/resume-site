@@ -639,6 +639,134 @@ a {
     text-align: right;
 }
 
+.study-comments {
+    margin-top: 64px;
+    padding-top: 30px;
+    border-top: 1px solid var(--study-border);
+}
+
+.study-comments > header h2,
+.study-comments > header p,
+.study-comment-list,
+.study-comment-list p,
+.study-comments-empty,
+.study-comment-notice {
+    margin-top: 0;
+}
+
+.study-comments > header h2 {
+    margin-bottom: 6px;
+    color: var(--study-text);
+    font-size: 22px;
+}
+
+.study-comments > header h2 span,
+.study-comments > header p,
+.study-comments-empty {
+    color: var(--study-muted);
+}
+
+.study-comments > header h2 span {
+    font-size: 14px;
+}
+
+.study-comment-notice {
+    margin-bottom: 22px;
+    padding: 12px 14px;
+    border: 1px solid var(--study-accent);
+    border-radius: 8px;
+    background: var(--study-accent-soft);
+}
+
+.study-comment-list {
+    display: grid;
+    gap: 0;
+    margin-bottom: 28px;
+    padding: 0;
+    border-top: 1px solid var(--study-border);
+    list-style: none;
+}
+
+.study-comment-list li {
+    padding: 18px 2px;
+    border-bottom: 1px solid var(--study-border);
+}
+
+.study-comment-list header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.study-comment-list strong {
+    color: var(--study-text);
+}
+
+.study-comment-list time {
+    color: var(--study-muted);
+    font-size: 12px;
+}
+
+.study-comment-list p {
+    margin-bottom: 0;
+    padding-top: 9px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.study-comment-form {
+    display: grid;
+    gap: 16px;
+    padding: 22px;
+    border: 1px solid var(--study-border);
+    border-radius: 10px;
+    background: var(--study-surface);
+}
+
+.study-comment-form > label:not(.study-comment-trap) {
+    display: grid;
+    gap: 7px;
+    color: var(--study-text);
+    font-weight: 600;
+}
+
+.study-comment-form input[type='text'],
+.study-comment-form input[name='author'],
+.study-comment-form textarea {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid var(--study-border);
+    border-radius: 7px;
+    color: var(--study-text);
+    background: var(--study-bg);
+    font: inherit;
+}
+
+.study-comment-form textarea {
+    resize: vertical;
+}
+
+.study-comment-form button {
+    justify-self: end;
+    min-height: 40px;
+    padding: 0 17px;
+    border: 1px solid var(--study-accent);
+    border-radius: 7px;
+    color: #fff;
+    background: var(--study-accent);
+    font: 600 14px/1 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    cursor: pointer;
+}
+
+.study-comment-trap {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
 .study-sidebar-footer {
     display: flex;
     justify-content: flex-end;

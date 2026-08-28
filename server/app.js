@@ -26,6 +26,11 @@ const siteSettingsFile = process.env.SITE_SETTINGS_FILE
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'site-settings.json')
     : path.join(rootDir, '_site_settings.json');
+const commentsDir = process.env.COMMENTS_DIR
+  ? path.resolve(process.env.COMMENTS_DIR)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'comments')
+    : path.join(rootDir, '_comments');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
@@ -33,6 +38,8 @@ const resumeShareToken = process.env.RESUME_SHARE_TOKEN || '';
 const studyShareToken = process.env.STUDY_SHARE_TOKEN || '';
 const defaultSiteSettings = Object.freeze({ studyAccess: studyShareToken ? 'shared' : 'public' });
 let siteSettingsCache;
+let commentWriteQueue = Promise.resolve();
+const commentRateLimits = new Map();
 const app = express();
 const attachmentNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|pdf|png|jpe?g|gif|webp)$/i;
 const privateFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|sql|pdf|png|jpe?g|gif|webp)$/i;
@@ -109,6 +116,76 @@ async function saveSiteSettings(settings) {
   await fs.writeFile(temporaryFile, `${JSON.stringify(settings, null, 2)}\n`, { encoding: 'utf8', mode: 0o640 });
   await fs.rename(temporaryFile, siteSettingsFile);
   siteSettingsCache = settings;
+}
+
+function commentFilePath(slug) {
+  if (!validateSlug(slug)) throw new Error('댓글의 글 주소를 확인하세요.');
+  return path.join(commentsDir, `${slug}.json`);
+}
+
+async function loadComments(slug) {
+  try {
+    const parsed = JSON.parse(await fs.readFile(commentFilePath(slug), 'utf8'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+async function saveComments(slug, comments) {
+  await fs.mkdir(commentsDir, { recursive: true });
+  const target = commentFilePath(slug);
+  const temporaryFile = path.join(commentsDir, `.${crypto.randomUUID()}.tmp`);
+  await fs.writeFile(temporaryFile, `${JSON.stringify(comments, null, 2)}\n`, { encoding: 'utf8', mode: 0o640 });
+  await fs.rename(temporaryFile, target);
+}
+
+async function loadAllComments(posts) {
+  const groups = await Promise.all(posts.map(async (post) => ({ post, comments: await loadComments(post.slug) })));
+  return groups.flatMap(({ post, comments }) => comments.map((comment) => ({ ...comment, postSlug: post.slug, postTitle: post.title })))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function updateComments(task) {
+  const result = commentWriteQueue.then(task, task);
+  commentWriteQueue = result.catch(() => {});
+  return result;
+}
+
+function normalizeCommentText(value, label, maximumLength) {
+  const text = String(value || '').trim();
+  if (!text || text.length > maximumLength || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)) {
+    throw new Error(`${label}을(를) 확인하세요.`);
+  }
+  return text;
+}
+
+function enforceCommentRateLimit(req) {
+  const address = process.env.NODE_ENV === 'production'
+    ? req.get('Cf-Connecting-Ip') || req.ip
+    : req.ip;
+  const now = Date.now();
+  if (commentRateLimits.size > 500) {
+    for (const [key, times] of commentRateLimits) {
+      if (!times.some((time) => now - time < 10 * 60 * 1000)) commentRateLimits.delete(key);
+    }
+  }
+  const recent = (commentRateLimits.get(address) || []).filter((time) => now - time < 10 * 60 * 1000);
+  if (recent.length >= 20) throw new Error('댓글은 10분에 20개까지 작성할 수 있습니다. 잠시 후 다시 시도하세요.');
+  recent.push(now);
+  commentRateLimits.set(address, recent);
+}
+
+function requireSameOrigin(req, res, next) {
+  const origin = req.get('Origin');
+  if (!origin) return res.status(403).send('Origin header required.');
+  try {
+    if (new URL(origin).host !== req.get('host')) return res.status(403).send('Invalid request origin.');
+  } catch {
+    return res.status(403).send('Invalid request origin.');
+  }
+  next();
 }
 
 function shareAccess({ token, cookieName, cookiePath, acceptedCookies = [], publicAccess = async () => false }) {
@@ -344,6 +421,25 @@ function studyPostNavigation(posts, currentPost) {
   return `<nav class="study-series-nav" aria-label="학습 기록 이전 및 다음 글">${previousLink}${nextLink}</nav>`;
 }
 
+function formatCommentDate(value) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function renderComments(post, comments, status) {
+  const notice = status === 'registered' ? '<p class="study-comment-notice" role="status">댓글이 등록되었습니다.</p>' : '';
+  const list = comments.length
+    ? `<ol class="study-comment-list">${comments.map((comment) => `<li><header><strong>${escapeHtml(comment.author)}</strong><time datetime="${escapeHtml(comment.createdAt)}">${escapeHtml(formatCommentDate(comment.createdAt))}</time></header><p>${escapeHtml(comment.content)}</p></li>`).join('')}</ol>`
+    : '<p class="study-comments-empty">첫 댓글을 남겨 보세요.</p>';
+  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${comments.length}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${notice}${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">댓글 등록</button></form></section>`;
+}
+
 function studySidebar(posts) {
   const categories = posts.reduce((result, post) => {
     result.set(post.category, (result.get(post.category) || 0) + 1);
@@ -372,7 +468,7 @@ function studyLayout({ title = '', description = '', content, posts, isHome = fa
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
     <title>${pageTitle}</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#ffffff">
-    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260825-3"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260825-1" defer></script></head>
+    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260828-1"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260825-1" defer></script></head>
     <body class="study-page"><a class="skip-link" href="#study-content">본문으로 바로가기</a><header class="mobile-study-header"><button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>☰</button><a href="/study/">Tech Notes</a></header>
     ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
 }
@@ -397,10 +493,29 @@ app.get('/study/:slug/', async (req, res, next) => {
     const posts = await loadPosts();
     const post = posts.find((item) => item.slug === req.params.slug);
     if (!post) return res.status(404).send('Not found');
+    const comments = await loadComments(post.slug);
     const downloadableFiles = post.attachmentFiles.filter((filename) => !imageExtensions.has(path.extname(filename).toLowerCase()));
     const attachments = downloadableFiles.length ? `<section class="study-attachments"><h2>첨부 파일</h2><ul>${downloadableFiles.map((filename) => { const action = filename.toLowerCase().endsWith('.pdf') ? '다운로드' : '보기'; return `<li><a href="/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/"><code>${escapeHtml(filename)}</code> ${action}</a></li>`; }).join('')}</ul></section>` : '';
-    const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${studyPostNavigation(posts, post)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
+    const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${studyPostNavigation(posts, post)}${renderComments(post, comments, req.query.comment)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
     res.send(studyLayout({ title: post.title, description: post.body.slice(0, 150), content, posts }));
+  } catch (error) { next(error); }
+});
+
+app.post('/study/:slug/comments/', requireSameOrigin, async (req, res, next) => {
+  try {
+    if (!validateSlug(req.params.slug)) return res.status(404).send('Not found');
+    const post = (await loadPosts()).find((item) => item.slug === req.params.slug);
+    if (!post) return res.status(404).send('Not found');
+    if (String(req.body.website || '')) return res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
+    const author = normalizeCommentText(req.body.author, '이름', 30);
+    const content = normalizeCommentText(req.body.content, '댓글', 1000);
+    enforceCommentRateLimit(req);
+    await updateComments(async () => {
+      const comments = await loadComments(post.slug);
+      comments.push({ id: crypto.randomUUID(), author, content, createdAt: new Date().toISOString() });
+      await saveComments(post.slug, comments);
+    });
+    res.redirect(303, `/study/${encodeURIComponent(post.slug)}/?comment=registered#comments`);
   } catch (error) { next(error); }
 });
 
@@ -436,23 +551,14 @@ async function requireAdmin(req, res, next) {
 
 app.get(/^\/admin$/, (_req, res) => res.redirect(302, '/admin/'));
 app.use('/admin', requireAdmin);
-app.use('/admin', (req, res, next) => {
-  if (req.method === 'GET' || req.method === 'HEAD') return next();
-  const origin = req.get('Origin');
-  if (!origin) return res.status(403).send('Origin header required.');
-  try {
-    if (new URL(origin).host !== req.get('host')) return res.status(403).send('Invalid request origin.');
-  } catch {
-    return res.status(403).send('Invalid request origin.');
-  }
-  next();
-});
+app.use('/admin', (req, res, next) => req.method === 'GET' || req.method === 'HEAD' ? next() : requireSameOrigin(req, res, next));
 app.get('/admin/profile.png', (_req, res) => res.sendFile(path.join(rootDir, 'profile.png')));
 
 function adminLayout(title, content, email, activeSection = '') {
   const icons = {
     dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
     notes: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h4M8 12h8M8 16h8"/></svg>',
+    comments: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4z"/><path d="M8 8h8M8 12h5"/></svg>',
     files: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   };
   const navItem = (section, href, label) => `<a${section === activeSection ? ' class="is-active" aria-current="page"' : ''} href="${href}">${icons[section]}<span>${label}</span></a>`;
@@ -463,7 +569,7 @@ function adminLayout(title, content, email, activeSection = '') {
   const sharedSelected = studyAccess === 'shared' ? ' selected' : '';
   const publicSelected = studyAccess === 'public' ? ' selected' : '';
   const pageTitle = title === '대시보드' ? 'Administration Console · Seungje Lee' : `${escapeHtml(title)} · Administration Console`;
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260820-4"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260828-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-1"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260828-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
 }
 
 app.post('/admin/settings/study-access', async (req, res, next) => {
@@ -490,6 +596,33 @@ app.get('/admin/notes/', async (_req, res, next) => {
     const posts = await loadPosts();
     const rows = posts.map((post) => `<tr><td>${post.date}</td><td><a href="/admin/edit/${encodeURIComponent(post.slug)}">${escapeHtml(post.title)}</a></td><td>${escapeHtml(post.category)}</td><td>${post.tags.map(escapeHtml).join(', ')}</td><td><a href="/study/${encodeURIComponent(post.slug)}/">보기</a></td></tr>`).join('');
     res.send(adminLayout('글 목록', `<div class="admin-title"><div><p>TECH LEARNING NOTES</p><h1>글 목록</h1></div><a class="button primary" href="/admin/new">새 글 작성</a></div><div class="table-wrap"><table><thead><tr><th>날짜</th><th>제목</th><th>카테고리</th><th>태그</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`, res.locals.adminEmail, 'notes'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/comments/', async (_req, res, next) => {
+  try {
+    const posts = await loadPosts();
+    const comments = await loadAllComments(posts);
+    const rows = comments.map((comment) => `<tr><td>${escapeHtml(formatCommentDate(comment.createdAt))}</td><td><a href="/study/${encodeURIComponent(comment.postSlug)}/" target="_blank" rel="noopener">${escapeHtml(comment.postTitle)}</a></td><td><div class="admin-comment-meta"><strong>${escapeHtml(comment.author)}</strong></div><p class="admin-comment-content">${escapeHtml(comment.content)}</p></td><td><form method="post" action="/admin/comments/${encodeURIComponent(comment.postSlug)}/${encodeURIComponent(comment.id)}/delete" onsubmit="return confirm('이 댓글을 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form></td></tr>`).join('');
+    const body = comments.length
+      ? `<div class="table-wrap admin-comments-table"><table><thead><tr><th>작성일</th><th>글</th><th>댓글</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : '<p class="private-empty">등록된 댓글이 없습니다.</p>';
+    const content = `<div class="admin-title"><div><p>TECH NOTES COMMENTS</p><h1>댓글 관리</h1></div><span>${comments.length}개</span></div>${body}`;
+    res.send(adminLayout('댓글 관리', content, res.locals.adminEmail, 'comments'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/comments/:slug/:id/delete', async (req, res, next) => {
+  try {
+    if (!validateSlug(req.params.slug) || !/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).send('Not found');
+    await updateComments(async () => {
+      const comments = await loadComments(req.params.slug);
+      const filtered = comments.filter((comment) => comment.id !== req.params.id);
+      if (filtered.length === comments.length) return;
+      if (filtered.length) await saveComments(req.params.slug, filtered);
+      else await fs.rm(commentFilePath(req.params.slug), { force: true });
+    });
+    res.redirect('/admin/comments/');
   } catch (error) { next(error); }
 });
 
@@ -593,6 +726,12 @@ async function savePost(req, previousSlug = null) {
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
       }
+      await fs.mkdir(commentsDir, { recursive: true });
+      try {
+        await fs.rename(commentFilePath(previousSlug), commentFilePath(slug));
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
     }
   }
   await storeUploadedFiles(uploadedFiles, path.join(studyFilesDir, slug));
@@ -615,6 +754,7 @@ app.post('/admin/delete/:slug', async (req, res, next) => {
     if (post) {
       await fs.unlink(path.join(postsDir, post.filename));
       await fs.rm(path.join(studyFilesDir, post.slug), { recursive: true, force: true });
+      await fs.rm(commentFilePath(post.slug), { force: true });
     }
     res.redirect('/admin/notes/');
   } catch (error) { next(error); }
