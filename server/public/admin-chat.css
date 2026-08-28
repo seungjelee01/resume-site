@@ -1,6 +1,8 @@
 .admin-chat-rooms { display: grid; gap: 10px; }
 .admin-chat-room { display: grid; gap: 7px; padding: 16px 18px; border: 1px solid var(--line); color: var(--text); background: var(--surface); text-decoration: none; }
 .admin-chat-room:hover { border-color: var(--accent); }
+.admin-chat-room.is-unread { border-color: var(--accent); border-left-width: 4px; padding-left: 15px; background: var(--accent-soft); }
+.admin-chat-room.is-unread strong, .admin-chat-room.is-unread p { color: var(--ink); font-weight: 700; }
 .admin-chat-room div { display: flex; align-items: center; gap: 9px; }
 .admin-chat-room strong { color: var(--ink); }
 .admin-chat-room time { margin-left: auto; color: var(--muted); font-size: 11px; }

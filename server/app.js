@@ -43,7 +43,8 @@ const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
 const resumeShareToken = process.env.RESUME_SHARE_TOKEN || '';
 const studyShareToken = process.env.STUDY_SHARE_TOKEN || '';
-const discordWebhookUrl = parseDiscordWebhookUrl(process.env.DISCORD_COMMENT_WEBHOOK_URL || '');
+const discordWebhookUrl = parseDiscordWebhookUrl(process.env.DISCORD_COMMENT_WEBHOOK_URL || '', 'DISCORD_COMMENT_WEBHOOK_URL');
+const discordChatWebhookUrl = parseDiscordWebhookUrl(process.env.DISCORD_CHAT_WEBHOOK_URL || '', 'DISCORD_CHAT_WEBHOOK_URL');
 const publicSiteUrl = parsePublicSiteUrl(process.env.PUBLIC_SITE_URL || '');
 const defaultSiteSettings = Object.freeze({ studyAccess: studyShareToken ? 'shared' : 'public' });
 let siteSettingsCache;
@@ -70,7 +71,7 @@ const privateFileUpload = multer({
 
 marked.setOptions({ gfm: true, breaks: false });
 
-function parseDiscordWebhookUrl(value) {
+function parseDiscordWebhookUrl(value, environmentName) {
   if (!value) return null;
   try {
     const url = new URL(value);
@@ -80,7 +81,7 @@ function parseDiscordWebhookUrl(value) {
     }
     return url.toString();
   } catch {
-    console.warn('Discord comment notifications are disabled: DISCORD_COMMENT_WEBHOOK_URL is invalid.');
+    console.warn(`Discord notifications are disabled: ${environmentName} is invalid.`);
     return null;
   }
 }
@@ -215,12 +216,12 @@ function queueDiscordCommentNotification(post, comment) {
 }
 
 function queueDiscordChatNotification(conversation, message) {
-  if (!discordWebhookUrl) return;
+  if (!discordChatWebhookUrl) return;
   setImmediate(async () => {
     try {
       const excerpt = message.content.length > 500 ? `${message.content.slice(0, 497)}...` : message.content;
       const adminUrl = publicSiteUrl ? `${publicSiteUrl}/admin/chats/${conversation.id}/` : null;
-      const response = await fetch(discordWebhookUrl, {
+      const response = await fetch(discordChatWebhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(5000),
@@ -820,10 +821,10 @@ app.get('/admin/chats/', async (_req, res, next) => {
       const lastMessage = conversation.messages.at(-1);
       const preview = lastMessage ? lastMessage.content.slice(0, 90) : '아직 메시지가 없습니다.';
       const unread = conversation.unread ? `<span class="admin-chat-unread">${conversation.unread}</span>` : '';
-      return `<a class="admin-chat-room" href="/admin/chats/${conversation.id}/"><div><strong>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</strong>${unread}<time>${escapeHtml(formatCommentDate(conversation.updatedAt))}</time></div><p>${escapeHtml(preview)}</p><small>${escapeHtml(conversation.ipMasked)}</small></a>`;
+      return `<a class="admin-chat-room${conversation.unread ? ' is-unread' : ''}" href="/admin/chats/${conversation.id}/"><div><strong>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</strong>${unread}<time>${escapeHtml(formatCommentDate(conversation.updatedAt))}</time></div><p>${escapeHtml(preview)}</p><small>${escapeHtml(conversation.ipMasked)}</small></a>`;
     }).join('');
     const body = rows || '<p class="private-empty">접수된 실시간 문의가 없습니다.</p>';
-    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-1"><div class="admin-title"><div><p>LIVE INQUIRIES</p><h1>실시간 문의</h1></div><span>${conversations.length}개</span></div><div class="admin-chat-rooms">${body}</div>`;
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-2"><div class="admin-title"><div><p>LIVE INQUIRIES</p><h1>실시간 문의</h1></div><span>${conversations.length}개</span></div><div class="admin-chat-rooms">${body}</div>`;
     res.send(adminLayout('실시간 문의', content, res.locals.adminEmail, 'chats'));
   } catch (error) { next(error); }
 });
@@ -833,7 +834,7 @@ app.get('/admin/chats/:id/', async (req, res, next) => {
     const conversation = await chatService.get(req.params.id);
     if (!conversation) return res.status(404).send('Not found');
     const messages = conversation.messages.map((message) => `<li class="is-${message.sender}"><span>${message.sender === 'admin' ? '관리자' : `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`}</span><p>${escapeHtml(message.content)}</p><time>${escapeHtml(formatCommentDate(message.createdAt))}</time></li>`).join('');
-    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-1"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="1000" rows="3" required data-admin-chat-input></textarea><button class="button primary" type="submit">전송</button></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20260828-1" defer></script>`;
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-2"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="1000" rows="3" required data-admin-chat-input></textarea><button class="button primary" type="submit">전송</button></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20260828-1" defer></script>`;
     res.send(adminLayout('실시간 문의', content, res.locals.adminEmail, 'chats'));
   } catch (error) { next(error); }
 });
