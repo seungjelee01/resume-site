@@ -182,12 +182,13 @@ async function sendDiscordCommentNotification(post, comment) {
       username: 'Tech Notes',
       allowed_mentions: { parse: [] },
       embeds: [{
-        title: '새 댓글이 작성되었습니다',
+        title: comment.parentAuthor ? '새 답글이 작성되었습니다' : '새 댓글이 작성되었습니다',
         description: excerpt,
         color: 0x5865f2,
         fields: [
           { name: '글', value: post.title, inline: true },
           { name: '작성자', value: comment.author, inline: true },
+          ...(comment.parentAuthor ? [{ name: '원댓글 작성자', value: comment.parentAuthor, inline: true }] : []),
         ],
         timestamp: comment.createdAt,
         ...(adminCommentsUrl ? { url: adminCommentsUrl } : {}),
@@ -208,7 +209,17 @@ function queueDiscordCommentNotification(post, comment) {
 
 async function loadAllComments(posts) {
   const groups = await Promise.all(posts.map(async (post) => ({ post, comments: await loadComments(post.slug) })));
-  return groups.flatMap(({ post, comments }) => comments.map((comment) => ({ ...comment, postSlug: post.slug, postTitle: post.title })))
+  return groups.flatMap(({ post, comments }) => comments.flatMap((comment) => [
+    { ...comment, kind: 'comment', postSlug: post.slug, postTitle: post.title },
+    ...(Array.isArray(comment.replies) ? comment.replies.map((reply) => ({
+      ...reply,
+      kind: 'reply',
+      parentId: comment.id,
+      parentAuthor: comment.author,
+      postSlug: post.slug,
+      postTitle: post.title,
+    })) : []),
+  ]))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -498,10 +509,16 @@ function formatCommentDate(value) {
 }
 
 function renderComments(post, comments) {
+  const commentCount = comments.reduce((total, comment) => total + 1 + (Array.isArray(comment.replies) ? comment.replies.length : 0), 0);
   const list = comments.length
-    ? `<ol class="study-comment-list">${comments.map((comment) => `<li><header><strong>${escapeHtml(comment.author)}</strong><time datetime="${escapeHtml(comment.createdAt)}">${escapeHtml(formatCommentDate(comment.createdAt))}</time></header><p>${escapeHtml(comment.content)}</p></li>`).join('')}</ol>`
+    ? `<ol class="study-comment-list">${comments.map((comment) => {
+      const replies = Array.isArray(comment.replies) ? comment.replies : [];
+      const replyList = replies.length ? `<ol class="study-reply-list">${replies.map((reply) => `<li><header><strong>${escapeHtml(reply.author)}</strong><time datetime="${escapeHtml(reply.createdAt)}">${escapeHtml(formatCommentDate(reply.createdAt))}</time></header><p>${escapeHtml(reply.content)}</p></li>`).join('')}</ol>` : '';
+      const replyForm = `<details class="study-reply-form"><summary>답글 작성</summary><form method="post" action="/study/${encodeURIComponent(post.slug)}/comments/${encodeURIComponent(comment.id)}/replies/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>답글<textarea name="content" required maxlength="1000" rows="3"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">답글 등록</button></form></details>`;
+      return `<li><header><strong>${escapeHtml(comment.author)}</strong><time datetime="${escapeHtml(comment.createdAt)}">${escapeHtml(formatCommentDate(comment.createdAt))}</time></header><p>${escapeHtml(comment.content)}</p>${replyList}${replyForm}</li>`;
+    }).join('')}</ol>`
     : '<p class="study-comments-empty">첫 댓글을 남겨 보세요.</p>';
-  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${comments.length}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">댓글 등록</button></form></section>`;
+  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${commentCount}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">댓글 등록</button></form></section>`;
 }
 
 function studySidebar(posts) {
@@ -532,7 +549,7 @@ function studyLayout({ title = '', description = '', content, posts, isHome = fa
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
     <title>${pageTitle}</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#ffffff">
-    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260828-1"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260825-1" defer></script></head>
+    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260828-2"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260825-1" defer></script></head>
     <body class="study-page"><a class="skip-link" href="#study-content">본문으로 바로가기</a><header class="mobile-study-header"><button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>☰</button><a href="/study/">Tech Notes</a></header>
     ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
 }
@@ -581,6 +598,32 @@ app.post('/study/:slug/comments/', requireSameOrigin, async (req, res, next) => 
       await saveComments(post.slug, comments);
     });
     queueDiscordCommentNotification(post, comment);
+    res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
+  } catch (error) { next(error); }
+});
+
+app.post('/study/:slug/comments/:commentId/replies/', requireSameOrigin, async (req, res, next) => {
+  try {
+    if (!validateSlug(req.params.slug) || !/^[0-9a-f-]{36}$/i.test(req.params.commentId)) return res.status(404).send('Not found');
+    const post = (await loadPosts()).find((item) => item.slug === req.params.slug);
+    if (!post) return res.status(404).send('Not found');
+    if (String(req.body.website || '')) return res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
+    const author = normalizeCommentText(req.body.author, '이름', 30);
+    const content = normalizeCommentText(req.body.content, '답글', 1000);
+    enforceCommentRateLimit(req);
+    let notification;
+    await updateComments(async () => {
+      const comments = await loadComments(post.slug);
+      const parent = comments.find((comment) => comment.id === req.params.commentId);
+      if (!parent) return;
+      const reply = { id: crypto.randomUUID(), author, content, createdAt: new Date().toISOString() };
+      parent.replies = Array.isArray(parent.replies) ? parent.replies : [];
+      parent.replies.push(reply);
+      await saveComments(post.slug, comments);
+      notification = { ...reply, parentAuthor: parent.author };
+    });
+    if (!notification) return res.status(404).send('Not found');
+    queueDiscordCommentNotification(post, notification);
     res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
   } catch (error) { next(error); }
 });
@@ -635,7 +678,7 @@ function adminLayout(title, content, email, activeSection = '') {
   const sharedSelected = studyAccess === 'shared' ? ' selected' : '';
   const publicSelected = studyAccess === 'public' ? ' selected' : '';
   const pageTitle = title === '대시보드' ? 'Administration Console · Seungje Lee' : `${escapeHtml(title)} · Administration Console`;
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-1"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260828-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-2"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260828-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
 }
 
 app.post('/admin/settings/study-access', async (req, res, next) => {
@@ -669,7 +712,14 @@ app.get('/admin/comments/', async (_req, res, next) => {
   try {
     const posts = await loadPosts();
     const comments = await loadAllComments(posts);
-    const rows = comments.map((comment) => `<tr><td>${escapeHtml(formatCommentDate(comment.createdAt))}</td><td><a href="/study/${encodeURIComponent(comment.postSlug)}/" target="_blank" rel="noopener">${escapeHtml(comment.postTitle)}</a></td><td><div class="admin-comment-meta"><strong>${escapeHtml(comment.author)}</strong></div><p class="admin-comment-content">${escapeHtml(comment.content)}</p></td><td><form method="post" action="/admin/comments/${encodeURIComponent(comment.postSlug)}/${encodeURIComponent(comment.id)}/delete" onsubmit="return confirm('이 댓글을 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form></td></tr>`).join('');
+    const rows = comments.map((comment) => {
+      const label = comment.kind === 'reply' ? `<span class="admin-comment-kind">답글 · ${escapeHtml(comment.parentAuthor)}에게</span>` : '<span class="admin-comment-kind">댓글</span>';
+      const deleteAction = comment.kind === 'reply'
+        ? `/admin/comments/${encodeURIComponent(comment.postSlug)}/${encodeURIComponent(comment.parentId)}/replies/${encodeURIComponent(comment.id)}/delete`
+        : `/admin/comments/${encodeURIComponent(comment.postSlug)}/${encodeURIComponent(comment.id)}/delete`;
+      const target = comment.kind === 'reply' ? '답글' : '댓글';
+      return `<tr><td>${escapeHtml(formatCommentDate(comment.createdAt))}</td><td><a href="/study/${encodeURIComponent(comment.postSlug)}/" target="_blank" rel="noopener">${escapeHtml(comment.postTitle)}</a></td><td><div class="admin-comment-meta"><strong>${escapeHtml(comment.author)}</strong>${label}</div><p class="admin-comment-content">${escapeHtml(comment.content)}</p></td><td><form method="post" action="${deleteAction}" onsubmit="return confirm('이 ${target}을 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form></td></tr>`;
+    }).join('');
     const body = comments.length
       ? `<div class="table-wrap admin-comments-table"><table><thead><tr><th>작성일</th><th>글</th><th>댓글</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
       : '<p class="private-empty">등록된 댓글이 없습니다.</p>';
@@ -687,6 +737,22 @@ app.post('/admin/comments/:slug/:id/delete', async (req, res, next) => {
       if (filtered.length === comments.length) return;
       if (filtered.length) await saveComments(req.params.slug, filtered);
       else await fs.rm(commentFilePath(req.params.slug), { force: true });
+    });
+    res.redirect('/admin/comments/');
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/comments/:slug/:commentId/replies/:replyId/delete', async (req, res, next) => {
+  try {
+    if (!validateSlug(req.params.slug) || ![req.params.commentId, req.params.replyId].every((id) => /^[0-9a-f-]{36}$/i.test(id))) return res.status(404).send('Not found');
+    await updateComments(async () => {
+      const comments = await loadComments(req.params.slug);
+      const parent = comments.find((comment) => comment.id === req.params.commentId);
+      if (!parent || !Array.isArray(parent.replies)) return;
+      const replies = parent.replies.filter((reply) => reply.id !== req.params.replyId);
+      if (replies.length === parent.replies.length) return;
+      parent.replies = replies;
+      await saveComments(req.params.slug, comments);
     });
     res.redirect('/admin/comments/');
   } catch (error) { next(error); }

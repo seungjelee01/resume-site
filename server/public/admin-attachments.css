@@ -124,6 +124,15 @@
     color: var(--ink);
 }
 
+.admin-comment-kind {
+    padding: 2px 7px;
+    border-radius: 999px;
+    color: var(--muted);
+    background: var(--accent-soft);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
 .admin-comment-content {
     margin: 7px 0 0;
     white-space: pre-wrap;
