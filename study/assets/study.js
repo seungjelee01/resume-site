@@ -44,11 +44,10 @@ function initStudyChat() {
         if (message.sender === 'admin') {
             const sender = document.createElement('div');
             sender.className = 'study-chat-sender';
-            const profile = document.createElement('img');
-            profile.src = '/study/owner-profile.png';
-            profile.alt = '';
-            profile.width = 24;
-            profile.height = 24;
+            const profile = document.createElement('span');
+            profile.className = 'study-chat-avatar';
+            profile.setAttribute('aria-hidden', 'true');
+            profile.textContent = 'SJ';
             const name = document.createElement('span');
             name.textContent = 'Seungje Lee';
             sender.append(profile, name);
