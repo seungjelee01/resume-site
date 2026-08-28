@@ -36,6 +36,8 @@ const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
 const resumeShareToken = process.env.RESUME_SHARE_TOKEN || '';
 const studyShareToken = process.env.STUDY_SHARE_TOKEN || '';
+const discordWebhookUrl = parseDiscordWebhookUrl(process.env.DISCORD_COMMENT_WEBHOOK_URL || '');
+const publicSiteUrl = parsePublicSiteUrl(process.env.PUBLIC_SITE_URL || '');
 const defaultSiteSettings = Object.freeze({ studyAccess: studyShareToken ? 'shared' : 'public' });
 let siteSettingsCache;
 let commentWriteQueue = Promise.resolve();
@@ -60,6 +62,33 @@ const privateFileUpload = multer({
 });
 
 marked.setOptions({ gfm: true, breaks: false });
+
+function parseDiscordWebhookUrl(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const allowedHosts = new Set(['discord.com', 'www.discord.com', 'discordapp.com', 'www.discordapp.com']);
+    if (url.protocol !== 'https:' || !allowedHosts.has(url.hostname) || !/^\/api\/webhooks\/\d+\/[A-Za-z0-9._-]+$/.test(url.pathname)) {
+      throw new Error('invalid Discord webhook URL');
+    }
+    return url.toString();
+  } catch {
+    console.warn('Discord comment notifications are disabled: DISCORD_COMMENT_WEBHOOK_URL is invalid.');
+    return null;
+  }
+}
+
+function parsePublicSiteUrl(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('invalid public site URL');
+    return url.origin;
+  } catch {
+    console.warn('Discord comment links are disabled: PUBLIC_SITE_URL is invalid.');
+    return null;
+  }
+}
 
 app.disable('x-powered-by');
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
@@ -139,6 +168,42 @@ async function saveComments(slug, comments) {
   const temporaryFile = path.join(commentsDir, `.${crypto.randomUUID()}.tmp`);
   await fs.writeFile(temporaryFile, `${JSON.stringify(comments, null, 2)}\n`, { encoding: 'utf8', mode: 0o640 });
   await fs.rename(temporaryFile, target);
+}
+
+async function sendDiscordCommentNotification(post, comment) {
+  if (!discordWebhookUrl) return;
+  const excerpt = comment.content.length > 500 ? `${comment.content.slice(0, 497)}...` : comment.content;
+  const adminCommentsUrl = publicSiteUrl ? `${publicSiteUrl}/admin/comments/` : null;
+  const response = await fetch(discordWebhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(5000),
+    body: JSON.stringify({
+      username: 'Tech Notes',
+      allowed_mentions: { parse: [] },
+      embeds: [{
+        title: '새 댓글이 작성되었습니다',
+        description: excerpt,
+        color: 0x5865f2,
+        fields: [
+          { name: '글', value: post.title, inline: true },
+          { name: '작성자', value: comment.author, inline: true },
+        ],
+        timestamp: comment.createdAt,
+        ...(adminCommentsUrl ? { url: adminCommentsUrl } : {}),
+      }],
+    }),
+  });
+  if (!response.ok) throw new Error(`Discord responded with HTTP ${response.status}`);
+}
+
+function queueDiscordCommentNotification(post, comment) {
+  if (!discordWebhookUrl) return;
+  setImmediate(() => {
+    sendDiscordCommentNotification(post, comment).catch((error) => {
+      console.error('Discord comment notification failed:', error.message);
+    });
+  });
 }
 
 async function loadAllComments(posts) {
@@ -432,12 +497,11 @@ function formatCommentDate(value) {
   }).format(new Date(value));
 }
 
-function renderComments(post, comments, status) {
-  const notice = status === 'registered' ? '<p class="study-comment-notice" role="status">댓글이 등록되었습니다.</p>' : '';
+function renderComments(post, comments) {
   const list = comments.length
     ? `<ol class="study-comment-list">${comments.map((comment) => `<li><header><strong>${escapeHtml(comment.author)}</strong><time datetime="${escapeHtml(comment.createdAt)}">${escapeHtml(formatCommentDate(comment.createdAt))}</time></header><p>${escapeHtml(comment.content)}</p></li>`).join('')}</ol>`
     : '<p class="study-comments-empty">첫 댓글을 남겨 보세요.</p>';
-  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${comments.length}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${notice}${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">댓글 등록</button></form></section>`;
+  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${comments.length}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">댓글 등록</button></form></section>`;
 }
 
 function studySidebar(posts) {
@@ -496,7 +560,7 @@ app.get('/study/:slug/', async (req, res, next) => {
     const comments = await loadComments(post.slug);
     const downloadableFiles = post.attachmentFiles.filter((filename) => !imageExtensions.has(path.extname(filename).toLowerCase()));
     const attachments = downloadableFiles.length ? `<section class="study-attachments"><h2>첨부 파일</h2><ul>${downloadableFiles.map((filename) => { const action = filename.toLowerCase().endsWith('.pdf') ? '다운로드' : '보기'; return `<li><a href="/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/"><code>${escapeHtml(filename)}</code> ${action}</a></li>`; }).join('')}</ul></section>` : '';
-    const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${studyPostNavigation(posts, post)}${renderComments(post, comments, req.query.comment)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
+    const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${studyPostNavigation(posts, post)}${renderComments(post, comments)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
     res.send(studyLayout({ title: post.title, description: post.body.slice(0, 150), content, posts }));
   } catch (error) { next(error); }
 });
@@ -510,12 +574,14 @@ app.post('/study/:slug/comments/', requireSameOrigin, async (req, res, next) => 
     const author = normalizeCommentText(req.body.author, '이름', 30);
     const content = normalizeCommentText(req.body.content, '댓글', 1000);
     enforceCommentRateLimit(req);
+    const comment = { id: crypto.randomUUID(), author, content, createdAt: new Date().toISOString() };
     await updateComments(async () => {
       const comments = await loadComments(post.slug);
-      comments.push({ id: crypto.randomUUID(), author, content, createdAt: new Date().toISOString() });
+      comments.push(comment);
       await saveComments(post.slug, comments);
     });
-    res.redirect(303, `/study/${encodeURIComponent(post.slug)}/?comment=registered#comments`);
+    queueDiscordCommentNotification(post, comment);
+    res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
   } catch (error) { next(error); }
 });
 

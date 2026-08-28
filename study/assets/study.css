@@ -649,8 +649,7 @@ a {
 .study-comments > header p,
 .study-comment-list,
 .study-comment-list p,
-.study-comments-empty,
-.study-comment-notice {
+.study-comments-empty {
     margin-top: 0;
 }
 
@@ -668,14 +667,6 @@ a {
 
 .study-comments > header h2 span {
     font-size: 14px;
-}
-
-.study-comment-notice {
-    margin-bottom: 22px;
-    padding: 12px 14px;
-    border: 1px solid var(--study-accent);
-    border-radius: 8px;
-    background: var(--study-accent-soft);
 }
 
 .study-comment-list {
