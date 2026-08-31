@@ -79,10 +79,11 @@ The administrator accepts these file types:
 | --- | ---: | --- |
 | Python (`.py`) | 512 KB | UTF-8 validation and escaped source preview |
 | SQL (`.sql`, private storage only) | 2 MB | UTF-8 validation and escaped source preview |
+| Text (`.txt`, private storage only) | 2 MB | UTF-8 validation and escaped text preview |
 | Images | 5 MB | Signature validation and inline display |
 | PDF (`.pdf`) | 15 MB | Signature validation and download response |
 
-Uploaded Python and SQL files are never executed by the application. SQL files are accepted only in the administrator's private file storage, not as public Tech Notes attachments.
+Uploaded Python and SQL files are never executed by the application. SQL and text files are accepted only in the administrator's private file storage, not as public Tech Notes attachments.
 
 ## Project Structure
 
