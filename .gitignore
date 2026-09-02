@@ -10,6 +10,7 @@ _site_settings.json
 _comments/
 _chats/
 _analytics/
+_journal/
 _study/*
 !_study/.gitkeep
 /ops/README.md

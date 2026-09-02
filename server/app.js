@@ -10,6 +10,7 @@ import multer from 'multer';
 import sanitizeHtml from 'sanitize-html';
 import { createAnalyticsService } from './analytics-service.js';
 import { createChatService } from './chat-service.js';
+import { createJournalService, JOURNAL_TAGS } from './journal-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -44,6 +45,11 @@ const analyticsDir = process.env.ANALYTICS_DIR
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'analytics')
     : path.join(rootDir, '_analytics');
+const journalDir = process.env.JOURNAL_DIR
+  ? path.resolve(process.env.JOURNAL_DIR)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'journal')
+    : path.join(rootDir, '_journal');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
@@ -58,6 +64,7 @@ let siteSettingsCache;
 let commentWriteQueue = Promise.resolve();
 const commentRateLimits = new Map();
 const app = express();
+const journalService = createJournalService(journalDir);
 const attachmentNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|pdf|png|jpe?g|gif|webp)$/i;
 const privateFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp)$/i;
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
@@ -736,6 +743,31 @@ app.use('/admin', requireAdmin);
 app.use('/admin', (req, res, next) => req.method === 'GET' || req.method === 'HEAD' ? next() : requireSameOrigin(req, res, next));
 app.get('/admin/profile.png', (_req, res) => res.sendFile(path.join(rootDir, 'profile.png')));
 
+const journalSections = Object.freeze([
+  ['learning', '오늘 배운 내용'],
+  ['difficulty', '어려웠던 점'],
+  ['resolution', '어떻게 해결했는지'],
+  ['communication', '질문·도움·협업과 소통'],
+  ['achievement', '잘한 점'],
+  ['improvement', '개선할 점'],
+  ['reflection', '자소서 소재·느낀 점'],
+]);
+
+function todayInSeoul() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date());
+}
+
+function journalForm(record, action, submitLabel) {
+  const value = (field) => escapeHtml(record[field] || '');
+  const tagFields = JOURNAL_TAGS.map((tag) => `<label><input type="checkbox" name="tags" value="${tag}"${record.tags?.includes(tag) ? ' checked' : ''}><span>${tag}</span></label>`).join('');
+  const textareas = journalSections.map(([field, label]) => `<label>${label}${field === 'learning' ? ' <small>필수</small>' : ''}<textarea name="${field}" maxlength="5000" rows="${field === 'learning' ? 8 : 5}"${field === 'learning' ? ' required' : ''}>${value(field)}</textarea></label>`).join('');
+  return `<form class="journal-editor" method="post" action="${action}"><div class="journal-fields"><label>날짜<input type="date" name="date" value="${value('date')}" required></label><label>제목 <small>선택</small><input type="text" name="title" maxlength="100" value="${value('title')}" placeholder="기록을 한눈에 알아볼 제목"></label></div><fieldset class="journal-tags"><legend>자소서 소재 태그 <small>선택</small></legend><div>${tagFields}</div></fieldset>${textareas}<div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/journal/">취소</a></div></form>`;
+}
+
+function journalSearchText(record) {
+  return [record.title, ...journalSections.map(([field]) => record[field]), ...(record.tags || [])].join(' ').toLocaleLowerCase('ko');
+}
+
 function adminLayout(title, content, email, activeSection = '') {
   const icons = {
     dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
@@ -744,6 +776,7 @@ function adminLayout(title, content, email, activeSection = '') {
     comments: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4z"/><path d="M8 8h8M8 12h5"/></svg>',
     chats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><circle cx="9" cy="10" r="1"/><circle cx="12" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg>',
     files: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    journal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5z"/><path d="M9 3v18M12 8h4M12 12h4"/></svg>',
   };
   const navItem = (section, href, label) => {
     const item = `<a${section === activeSection ? ' class="is-active" aria-current="page"' : ''} href="${href}">${icons[section]}<span>${label}</span></a>`;
@@ -758,7 +791,7 @@ function adminLayout(title, content, email, activeSection = '') {
   const sharedSelected = studyAccess === 'shared' ? ' selected' : '';
   const publicSelected = studyAccess === 'public' ? ' selected' : '';
   const pageTitle = title === '대시보드' ? 'Administration Console · Seungje Lee' : `${escapeHtml(title)} · Administration Console`;
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-2"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260828-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-2"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260902-1"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('journal', '/admin/journal/', '일기')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
 }
 
 app.post('/admin/settings/study-access', async (req, res, next) => {
@@ -773,10 +806,85 @@ app.post('/admin/settings/study-access', async (req, res, next) => {
 
 app.get('/admin/', async (_req, res, next) => {
   try {
-    const [posts, files] = await Promise.all([loadPosts(), loadPrivateFiles()]);
+    const [posts, files, journals] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list()]);
     const memory = process.memoryUsage();
-    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 사용량</span><strong>${formatFileSize(memory.rss)}</strong><small>Node.js RSS 기준</small></section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
+    const today = todayInSeoul();
+    const wroteToday = journals.some((journal) => journal.date === today);
+    const journalHref = wroteToday ? `/admin/journal/${today}/` : '/admin/journal/new';
+    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 사용량</span><strong>${formatFileSize(memory.rss)}</strong><small>Node.js RSS 기준</small></section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
     res.send(adminLayout('대시보드', content, res.locals.adminEmail, 'dashboard'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/journal/', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const query = String(req.query.q || '').trim().slice(0, 100);
+    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : '';
+    const tag = JOURNAL_TAGS.includes(String(req.query.tag || '')) ? String(req.query.tag) : '';
+    const journals = (await journalService.list()).filter((journal) => (!query || journalSearchText(journal).includes(query.toLocaleLowerCase('ko'))) && (!month || journal.date.startsWith(month)) && (!tag || journal.tags?.includes(tag)));
+    const monthOptions = [...new Set((await journalService.list()).map((journal) => journal.date.slice(0, 7)))].map((item) => `<option value="${item}"${item === month ? ' selected' : ''}>${item}</option>`).join('');
+    const tagOptions = JOURNAL_TAGS.map((item) => `<option value="${item}"${item === tag ? ' selected' : ''}>${item}</option>`).join('');
+    const cards = journals.map((journal) => `<article class="journal-card"><time datetime="${journal.date}">${journal.date.replaceAll('-', '. ')}</time><h2><a href="/admin/journal/${journal.date}/">${escapeHtml(journal.title || journal.learning.slice(0, 45))}</a></h2><p>${escapeHtml(journal.learning.slice(0, 140))}${journal.learning.length > 140 ? '…' : ''}</p><div>${(journal.tags || []).map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div></article>`).join('');
+    const body = cards || '<p class="journal-empty">조건에 맞는 기록이 없습니다.</p>';
+    const content = `<div class="admin-title"><div><p>PRIVATE DAILY JOURNAL</p><h1>일기</h1></div><a class="button primary" href="/admin/journal/new">오늘 기록 작성</a></div><form class="journal-filter" method="get"><label>검색<input type="search" name="q" value="${escapeHtml(query)}" placeholder="제목이나 본문 검색"></label><label>월<select name="month"><option value="">전체</option>${monthOptions}</select></label><label>태그<select name="tag"><option value="">전체</option>${tagOptions}</select></label><button class="button" type="submit">찾기</button>${query || month || tag ? '<a class="button" href="/admin/journal/">초기화</a>' : ''}</form><p class="journal-count">${journals.length}개의 기록</p><div class="journal-list">${body}</div>`;
+    res.send(adminLayout('일기', content, res.locals.adminEmail, 'journal'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/journal/new', async (_req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const today = todayInSeoul();
+    if (await journalService.load(today)) return res.redirect(302, `/admin/journal/${today}/edit`);
+    const content = `<div class="admin-title"><div><p>NEW DAILY JOURNAL</p><h1>오늘의 기록</h1></div></div>${journalForm({ date: today, tags: [] }, '/admin/journal/new', '저장')}`;
+    res.send(adminLayout('새 일기', content, res.locals.adminEmail, 'journal'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/journal/new', async (req, res, next) => {
+  try {
+    if (await journalService.load(String(req.body.date || ''))) throw new Error('해당 날짜의 일기가 이미 있습니다.');
+    const journal = await journalService.save(req.body);
+    res.redirect(303, `/admin/journal/${journal.date}/`);
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/journal/:date/', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const journal = await journalService.load(req.params.date);
+    if (!journal) return res.status(404).send('Not found');
+    const sections = journalSections.filter(([field]) => journal[field]).map(([field, label]) => `<section><h2>${label}</h2><p>${escapeHtml(journal[field])}</p></section>`).join('');
+    const tags = (journal.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
+    const content = `<div class="admin-title"><div><p>${journal.date}</p><h1>${escapeHtml(journal.title || '하루 기록')}</h1></div><a class="button" href="/admin/journal/${journal.date}/edit">수정</a></div><article class="journal-entry"><div class="journal-entry-tags">${tags}</div>${sections}</article><form class="delete-form" method="post" action="/admin/journal/${journal.date}/delete" onsubmit="return confirm('이 일기를 삭제할까요? 삭제 후 복구할 수 없습니다.')"><button class="button danger" type="submit">삭제</button></form>`;
+    res.send(adminLayout(journal.title || journal.date, content, res.locals.adminEmail, 'journal'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/journal/:date/edit', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const journal = await journalService.load(req.params.date);
+    if (!journal) return res.status(404).send('Not found');
+    const content = `<div class="admin-title"><div><p>${journal.date}</p><h1>일기 수정</h1></div></div>${journalForm(journal, `/admin/journal/${journal.date}/edit`, '변경사항 저장')}`;
+    res.send(adminLayout('일기 수정', content, res.locals.adminEmail, 'journal'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/journal/:date/edit', async (req, res, next) => {
+  try {
+    if (!await journalService.load(req.params.date)) return res.status(404).send('Not found');
+    const journal = await journalService.save(req.body, req.params.date);
+    res.redirect(303, `/admin/journal/${journal.date}/`);
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/journal/:date/delete', async (req, res, next) => {
+  try {
+    if (!await journalService.load(req.params.date)) return res.status(404).send('Not found');
+    await journalService.remove(req.params.date);
+    res.redirect(303, '/admin/journal/');
   } catch (error) { next(error); }
 });
 
