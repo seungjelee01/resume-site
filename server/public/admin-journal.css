@@ -197,13 +197,17 @@
     overflow-wrap: anywhere;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
     .journal-filter {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .journal-filter label:first-child {
         grid-column: 1 / -1;
+    }
+
+    .journal-filter > .button {
+        width: 100%;
     }
 }
 

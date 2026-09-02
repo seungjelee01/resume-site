@@ -323,17 +323,23 @@
     color: var(--muted);
 }
 
-@media (max-width: 900px) {
-    .reading-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
+@media (max-width: 1200px) {
     .reading-filter {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .reading-filter label:first-child {
         grid-column: 1 / -1;
+    }
+
+    .reading-filter > .button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 900px) {
+    .reading-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .reading-fields.reading-dates {
