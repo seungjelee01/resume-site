@@ -105,7 +105,15 @@ const ORACLE_SEED_V3 = Object.freeze([
   ['TO_CHAR 날짜 형식에서 앞에 붙는 0이나 공백을 제거하는 형식 요소는?', ['FM'], 'oracle-to-char-date-format'],
 ]);
 
-const SEED_VERSION = 3;
+const ORACLE_SEED_V4 = Object.freeze([
+  ['Oracle에서 날짜에 더하거나 빼는 숫자가 나타내는 단위는?', ['일수', '일'], 'oracle-date-functions'],
+  ['Oracle에서 날짜 값에서 날짜 값을 뺀 결과가 나타내는 단위는?', ['일수', '일'], 'oracle-date-functions'],
+  ['TO_CHAR 날짜 형식에서 자정 이후 경과한 초를 표시하는 형식 요소는?', ['SSSSS'], 'oracle-to-char-date-format'],
+  ['TO_CHAR 타임스탬프 형식에서 소수 초를 표시하는 형식 요소는?', ['FF', 'FF1~FF9', 'FF1-FF9'], 'oracle-to-char-date-format'],
+  ['TO_CHAR 타임스탬프 형식에서 타임존의 시·분 오프셋을 함께 표시하는 형식 요소는?', ['TZH:TZM', 'TZH TZM'], 'oracle-to-char-date-format'],
+]);
+
+const SEED_VERSION = 4;
 
 function normalizeText(value, label, maxLength, required = false) {
   const text = String(value || '').trim();
@@ -158,6 +166,7 @@ export function createQuizService(directory) {
       ...(version < 1 ? INITIAL_ORACLE_SQL_SEED : []),
       ...(version < 2 ? ORACLE_SEED_V2 : []),
       ...(version < 3 ? ORACLE_SEED_V3 : []),
+      ...(version < 4 ? ORACLE_SEED_V4 : []),
     ];
     for (const [prompt, answers, relatedSlug] of seeds) {
       if (existingPrompts.has(prompt)) continue;
