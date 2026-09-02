@@ -56,7 +56,7 @@ When `STUDY_SHARE_TOKEN` is configured, an administrator can switch Tech Notes b
 
 ## Content Storage
 
-Published Tech Notes are intentionally excluded from this repository. The application reads Markdown content from the directory configured by `STUDY_DIR`; uploaded public attachments, administrator-only files, comments, private journal entries, and reading logs use separately configured persistent directories. Journal entries and reading logs default to `journal` and `reading` directories next to `STUDY_DIR`, can be overridden with `JOURNAL_DIR` and `READING_DIR`, and are available only through the authenticated administration console.
+Published Tech Notes are intentionally excluded from this repository. The application reads Markdown content from the directory configured by `STUDY_DIR`; uploaded public attachments, administrator-only files, comments, quizzes, private journal entries, and reading logs use separately configured persistent directories. Quiz questions default to a `quizzes` directory next to `STUDY_DIR` and can be overridden with `QUIZ_DIR`; active questions are public on Tech Notes while editing remains administrator-only. Journal entries and reading logs default to `journal` and `reading`, can be overridden with `JOURNAL_DIR` and `READING_DIR`, and are available only through the authenticated administration console.
 
 For local testing, create Markdown files under `_study/` using `_templates/study-note.md`. Files in `_study/` are ignored by Git so personal notes cannot be committed accidentally.
 

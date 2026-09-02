@@ -12,6 +12,7 @@ _chats/
 _analytics/
 _journal/
 _reading/
+_quizzes/
 _study/*
 !_study/.gitkeep
 /ops/README.md

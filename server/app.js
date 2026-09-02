@@ -12,6 +12,7 @@ import { createAnalyticsService } from './analytics-service.js';
 import { createChatService } from './chat-service.js';
 import { createJournalService, JOURNAL_TAGS } from './journal-service.js';
 import { createReadingService, READING_CATEGORIES, READING_STATUSES, READING_TAGS } from './reading-service.js';
+import { createQuizService } from './quiz-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -56,6 +57,11 @@ const readingDir = process.env.READING_DIR
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'reading')
     : path.join(rootDir, '_reading');
+const quizDir = process.env.QUIZ_DIR
+  ? path.resolve(process.env.QUIZ_DIR)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'quizzes')
+    : path.join(rootDir, '_quizzes');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
@@ -72,6 +78,7 @@ const commentRateLimits = new Map();
 const app = express();
 const journalService = createJournalService(journalDir);
 const readingService = createReadingService(readingDir);
+const quizService = createQuizService(quizDir);
 const attachmentNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|pdf|png|jpe?g|gif|webp)$/i;
 const privateFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp)$/i;
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
@@ -610,7 +617,7 @@ function studySidebar(posts) {
   const tags = [...new Set(posts.flatMap((post) => post.tags))].sort((a, b) => a.localeCompare(b, 'ko'));
   return `<aside class="study-sidebar" id="study-sidebar" data-study-sidebar>
     <div class="sidebar-header"><div class="study-brand-group"><a class="study-brand" href="/study/">Tech Notes</a><span class="study-owner-brand">by <span>Seungje</span> <strong>Lee</strong></span></div><button class="sidebar-close" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-close>×</button></div>
-    <nav class="sidebar-nav" aria-label="학습 기록 탐색"><a class="sidebar-primary-link" href="/study/">전체 기록</a>
+    <nav class="sidebar-nav" aria-label="학습 기록 탐색"><a class="sidebar-primary-link" href="/study/">전체 기록</a><a class="sidebar-primary-link sidebar-quiz-link" href="/study/quiz/">용어 퀴즈</a>
       <form class="sidebar-search" action="/study/" role="search" data-study-search-form><label for="study-search">글 검색</label><div><input id="study-search" type="search" name="q" placeholder="제목, 카테고리, 태그" autocomplete="off" data-study-search><button type="submit" aria-label="검색">⌕</button></div></form>
       <section class="sidebar-group"><h2>카테고리</h2><div class="sidebar-categories">${sortedCategories.map(([category, count]) => `<a href="/study/?category=${encodeURIComponent(category)}" data-sidebar-category="${escapeHtml(category)}"><span>${escapeHtml(category)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
       <section class="sidebar-group"><h2>월별 기록</h2><div class="sidebar-months">${[...months].map(([month, count]) => `<a href="/study/#month-${month}"><span>${escapeHtml(month)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
@@ -636,6 +643,24 @@ app.get('/study/privacy/', async (_req, res, next) => {
     const posts = await loadPosts();
     const content = `<article class="study-note study-privacy"><header class="study-note-header"><p class="study-note-date">시행일 2026. 08. 28.</p><h1>개인정보 처리방침</h1><p>Tech Notes는 필요한 범위에서만 정보를 처리하고 안전하게 관리합니다.</p></header><div class="study-note-content"><section><h2>1. 처리하는 정보와 목적</h2><div class="study-table-scroll" role="region" aria-label="개인정보 처리 항목 표" tabindex="0"><table><thead><tr><th>기능</th><th>처리 항목</th><th>목적</th></tr></thead><tbody><tr><td>방문 통계</td><td>방문 일자, 조회 경로, 글 식별자, 국가 코드, IP 주소와 브라우저 정보로 생성한 일별 익명 식별값</td><td>방문자·조회 수 집계와 서비스 개선</td></tr><tr><td>댓글·답글</td><td>작성자명, 내용, 작성 시각</td><td>글에 대한 의견과 질문 제공</td></tr><tr><td>1:1 문의</td><td>문의·답변 내용, 작성 시각, 마스킹된 IP 대역, 임의의 채팅방 식별자와 인증 토큰의 해시</td><td>실시간 문의 응대와 악용 방지</td></tr><tr><td>접근·환경 설정</td><td>공유 링크 및 채팅 세션 쿠키, 테마와 읽음 상태</td><td>접근 권한 유지, 문의 연결, 화면 설정 저장</td></tr></tbody></table></div><p>방문 통계에서는 원본 IP 주소와 브라우저 정보를 저장하지 않습니다. 서버가 요청을 처리할 때 일별 익명 식별값 생성에만 사용하며, 국가는 Cloudflare가 제공하는 국가 코드만 기록합니다.</p></section><section><h2>2. 보유 및 이용 기간</h2><ul><li>방문 통계의 일별 익명 식별값: 31일 후 삭제</li><li>개인을 식별하지 않는 날짜·글·국가별 합계: 서비스 운영 기간 동안 보관</li><li>댓글과 답글: 해당 댓글 또는 글을 삭제할 때까지 공개·보관</li><li>1:1 문의: 마지막 활동일로부터 90일 후 자동 삭제하거나 요청 시 삭제</li><li>공유 링크 및 채팅 세션 쿠키: 브라우저에 최대 30일간 저장</li><li>테마와 읽음 상태: 브라우저 저장 공간에서 직접 삭제할 때까지 저장</li></ul></section><section><h2>3. 공개되는 정보와 외부 서비스</h2><p>댓글과 답글에 입력한 작성자명 및 내용은 Tech Notes 방문자에게 공개됩니다. 비밀번호, 연락처 등 공개를 원하지 않는 정보는 작성하지 마세요.</p><p>서비스 제공과 보호를 위해 Cloudflare의 네트워크·접근 제어 기능을 사용합니다. Discord에는 새 댓글·답글 또는 새 문의가 있다는 일반 알림, 작성 시각과 해당 관리자 목록 링크만 전송합니다. 작성자명, 댓글·문의 내용, IP 주소, 글 제목과 채팅방 식별자는 전송하지 않습니다.</p></section><section><h2>4. 쿠키와 브라우저 저장 공간</h2><p>공유 링크 접근 상태와 채팅 연결을 유지하기 위해 필수 쿠키를 사용합니다. 테마 및 채팅 읽음 상태는 브라우저의 localStorage에 저장됩니다. 브라우저 설정에서 이를 삭제할 수 있으나 공유 페이지 재인증, 테마 초기화 또는 기존 문의 연결 해제가 발생할 수 있습니다.</p></section><section><h2>5. 이용자의 권리</h2><p>자신이 작성한 댓글 또는 문의 정보의 열람·정정·삭제를 요청할 수 있습니다. 화면 오른쪽 아래의 1:1 문의를 통해 요청하면 본인 확인에 필요한 최소한의 절차를 거쳐 처리합니다.</p></section><section><h2>6. 안전성 확보 조치</h2><p>관리자 화면 접근 제어, 전송 구간 암호화, 인증 토큰 해시 저장, IP 주소 마스킹, 저장 파일 권한 제한과 자동 보관 기간 적용 등의 조치를 사용합니다.</p></section><section><h2>7. 개인정보 보호 문의</h2><p>운영자 및 개인정보 보호 담당자는 Seungje Lee입니다. 개인정보 처리와 관련된 문의 및 권리 행사는 화면 오른쪽 아래의 1:1 문의를 이용해 주세요.</p></section><section><h2>8. 처리방침 변경</h2><p>처리 항목이나 기능이 달라지면 이 페이지의 내용과 시행일을 갱신합니다.</p></section></div><footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
     res.send(studyLayout({ title: '개인정보 처리방침', description: 'Tech Notes 개인정보 처리방침', content, posts }));
+  } catch (error) { next(error); }
+});
+
+app.get('/study/quiz/', async (req, res, next) => {
+  try {
+    const [posts, questions] = await Promise.all([loadPosts(), quizService.list()]);
+    const postSlugs = new Set(posts.map((post) => post.slug));
+    const activeQuestions = questions.filter((question) => question.active);
+    const categories = [...new Set(activeQuestions.map((question) => question.category))].sort((a, b) => a.localeCompare(b, 'ko'));
+    const cards = activeQuestions.map((question, index) => {
+      const relatedLink = question.relatedSlug && postSlugs.has(question.relatedSlug) ? `<a href="/study/${encodeURIComponent(question.relatedSlug)}/">관련 글 복습 →</a>` : '';
+      return `<article class="study-quiz-card" data-quiz-question data-category="${escapeHtml(question.category)}" data-answers="${escapeHtml(JSON.stringify(question.answers))}"${index ? ' hidden' : ''}><div class="study-quiz-meta"><span>${escapeHtml(question.category)}</span><span data-quiz-position></span></div><h2>${escapeHtml(question.prompt)}</h2><form data-quiz-form><label for="quiz-answer-${question.id}">정답</label><div><input id="quiz-answer-${question.id}" autocomplete="off" autocapitalize="off" spellcheck="false" data-quiz-answer><button type="submit">정답 확인</button></div></form><div class="study-quiz-result" aria-live="polite" data-quiz-result hidden></div><footer>${relatedLink}<button type="button" data-quiz-next hidden>다음 문제</button></footer></article>`;
+    }).join('');
+    const categoryOptions = categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
+    const quizBody = activeQuestions.length ? `<div class="study-quiz-toolbar"><label>카테고리<select data-quiz-category><option value="">전체</option>${categoryOptions}</select></label><button type="button" data-quiz-restart>처음부터 다시</button></div><div class="study-quiz-progress"><div><i data-quiz-progress-bar></i></div><p><strong data-quiz-score>0</strong>개 정답 · <span data-quiz-remaining>${activeQuestions.length}</span>개 남음</p></div><div class="study-quiz-cards" data-quiz-cards>${cards}</div><section class="study-quiz-complete" data-quiz-complete hidden><h2>복습 완료</h2><p data-quiz-summary></p><button type="button" data-quiz-retry-wrong>틀린 문제 다시 풀기</button><button type="button" data-quiz-restart>전체 다시 풀기</button></section>` : '<section class="study-empty-state"><h2>등록된 퀴즈가 없습니다.</h2></section>';
+    const content = `<link rel="stylesheet" href="/study/assets/quiz.css?v=20260902-1"><header class="study-home-header study-quiz-header"><p class="study-eyebrow">ACTIVE RECALL</p><h1>용어 퀴즈</h1><p>설명을 읽고 알맞은 키워드를 입력해 학습한 내용을 복습합니다.</p></header>${quizBody}<script src="/study/assets/quiz.js?v=20260902-1" defer></script>`;
+    res.send(studyLayout({ title: '용어 퀴즈', description: 'Tech Notes에서 학습한 용어를 복습하는 퀴즈', content, posts }));
+    trackStudyVisit(req);
   } catch (error) { next(error); }
 });
 
@@ -802,6 +827,11 @@ function readingSearchText(record) {
   return [record.title, record.author, record.publisher, record.category, ...readingSections.map(([field]) => record[field]), ...(record.tags || [])].join(' ').toLocaleLowerCase('ko');
 }
 
+function quizForm(question, posts, action, submitLabel) {
+  const postOptions = posts.map((post) => `<option value="${escapeHtml(post.slug)}"${question.relatedSlug === post.slug ? ' selected' : ''}>${escapeHtml(post.title)}</option>`).join('');
+  return `<form class="quiz-editor editor" method="post" action="${action}"><label>문제 설명<textarea name="prompt" maxlength="500" rows="5" required>${escapeHtml(question.prompt || '')}</textarea></label><label>허용 정답 <small>한 줄에 하나씩 입력하며 첫 번째 정답을 대표 정답으로 표시합니다.</small><textarea name="answers" maxlength="1000" rows="5" required>${escapeHtml((question.answers || []).join('\n'))}</textarea></label><div class="field-row"><label>카테고리<input name="category" maxlength="40" value="${escapeHtml(question.category || 'Oracle')}" required></label><label>관련 글<select name="relatedSlug"><option value="">선택하지 않음</option>${postOptions}</select></label></div><label class="quiz-active"><input type="checkbox" name="active"${question.active !== false ? ' checked' : ''}><span>Tech Notes 퀴즈에 공개</span></label><div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/quizzes/">취소</a></div></form>`;
+}
+
 function adminLayout(title, content, email, activeSection = '') {
   const icons = {
     dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
@@ -812,10 +842,11 @@ function adminLayout(title, content, email, activeSection = '') {
     files: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
     journal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5z"/><path d="M9 3v18M12 8h4M12 12h4"/></svg>',
     reading: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v18H7.5A3.5 3.5 0 0 0 4 23z"/><path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v18h4.5A3.5 3.5 0 0 1 20 23z"/></svg>',
+    quizzes: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 1 1 3.4 2c-.8.45-1.2.9-1.2 2M12 17h.01"/></svg>',
   };
   const navItem = (section, href, label) => {
     const item = `<a${section === activeSection ? ' class="is-active" aria-current="page"' : ''} href="${href}">${icons[section]}<span>${label}</span></a>`;
-    if (section === 'notes') return `${item}<a${activeSection === 'analytics' ? ' class="is-active" aria-current="page"' : ''} href="/admin/analytics/">${icons.analytics}<span>방문자 통계</span></a>`;
+    if (section === 'notes') return `${item}<a${activeSection === 'quizzes' ? ' class="is-active" aria-current="page"' : ''} href="/admin/quizzes/">${icons.quizzes}<span>퀴즈 관리</span></a><a${activeSection === 'analytics' ? ' class="is-active" aria-current="page"' : ''} href="/admin/analytics/">${icons.analytics}<span>방문자 통계</span></a>`;
     if (section !== 'comments') return item;
     return `${item}<a${activeSection === 'chats' ? ' class="is-active" aria-current="page"' : ''} href="/admin/chats/">${icons.chats}<span>실시간 문의</span></a>`;
   };
@@ -1005,6 +1036,59 @@ app.post('/admin/journal/:date/delete', async (req, res, next) => {
     if (!await journalService.load(req.params.date)) return res.status(404).send('Not found');
     await journalService.remove(req.params.date);
     res.redirect(303, '/admin/journal/');
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/quizzes/', async (_req, res, next) => {
+  try {
+    const [questions, posts] = await Promise.all([quizService.list(), loadPosts()]);
+    const postTitles = new Map(posts.map((post) => [post.slug, post.title]));
+    const rows = questions.map((question) => `<tr><td><span class="quiz-state ${question.active ? 'is-active' : ''}">${question.active ? '공개' : '비공개'}</span></td><td><a href="/admin/quizzes/${question.id}/edit">${escapeHtml(question.prompt)}</a><small>정답: ${escapeHtml(question.answers.join(', '))}</small></td><td>${escapeHtml(question.category)}</td><td>${escapeHtml(postTitles.get(question.relatedSlug) || '연결 없음')}</td></tr>`).join('');
+    const body = rows ? `<div class="table-wrap admin-quiz-table"><table><thead><tr><th>상태</th><th>문제</th><th>카테고리</th><th>관련 글</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="private-empty">등록된 퀴즈가 없습니다.</p>';
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-quiz.css?v=20260902-1"><div class="admin-title"><div><p>TECH NOTES QUIZ</p><h1>퀴즈 관리</h1></div><a class="button primary" href="/admin/quizzes/new">문제 추가</a></div><p class="admin-quiz-guide">설명을 보고 키워드를 맞히는 문제입니다. 현재 ${questions.filter((question) => question.active).length}개가 공개되어 있습니다.</p>${body}`;
+    res.send(adminLayout('퀴즈 관리', content, res.locals.adminEmail, 'quizzes'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/quizzes/new', async (_req, res, next) => {
+  try {
+    const posts = await loadPosts();
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-quiz.css?v=20260902-1"><div class="admin-title"><div><p>NEW QUIZ QUESTION</p><h1>문제 추가</h1></div></div>${quizForm({ category: 'Oracle', active: true }, posts, '/admin/quizzes/new', '저장')}`;
+    res.send(adminLayout('문제 추가', content, res.locals.adminEmail, 'quizzes'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/quizzes/new', async (req, res, next) => {
+  try {
+    if (req.body.relatedSlug && !(await loadPosts()).some((post) => post.slug === req.body.relatedSlug)) throw new Error('관련 글을 확인하세요.');
+    const question = await quizService.save(req.body);
+    res.redirect(303, `/admin/quizzes/${question.id}/edit`);
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/quizzes/:id/edit', async (req, res, next) => {
+  try {
+    const [question, posts] = await Promise.all([quizService.load(req.params.id), loadPosts()]);
+    if (!question) return res.status(404).send('Not found');
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-quiz.css?v=20260902-1"><div class="admin-title"><div><p>${escapeHtml(question.category)}</p><h1>문제 수정</h1></div></div>${quizForm(question, posts, `/admin/quizzes/${question.id}/edit`, '변경사항 저장')}<form class="delete-form" method="post" action="/admin/quizzes/${question.id}/delete" onsubmit="return confirm('이 퀴즈 문제를 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form>`;
+    res.send(adminLayout('문제 수정', content, res.locals.adminEmail, 'quizzes'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/quizzes/:id/edit', async (req, res, next) => {
+  try {
+    if (req.body.relatedSlug && !(await loadPosts()).some((post) => post.slug === req.body.relatedSlug)) throw new Error('관련 글을 확인하세요.');
+    const question = await quizService.save(req.body, req.params.id);
+    if (!question) return res.status(404).send('Not found');
+    res.redirect(303, '/admin/quizzes/');
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/quizzes/:id/delete', async (req, res, next) => {
+  try {
+    if (!await quizService.load(req.params.id)) return res.status(404).send('Not found');
+    await quizService.remove(req.params.id);
+    res.redirect(303, '/admin/quizzes/');
   } catch (error) { next(error); }
 });
 
