@@ -16,7 +16,16 @@
   let score = 0;
   let answered = 0;
 
-  const normalize = (value) => value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ko');
+  const normalize = (value) => value
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/(?<=[가-힣])\s+(?=[가-힣])/g, '')
+    .toLocaleLowerCase('ko');
+  const answerDisplayKey = (value) => normalize(value).replace(/\(\)$/, '');
+  const displayAnswers = (answers) => answers.filter((answer, index) => (
+    answers.findIndex((candidate) => answerDisplayKey(candidate) === answerDisplayKey(answer)) === index
+  ));
   const shuffle = (items) => {
     const result = [...items];
     for (let index = result.length - 1; index > 0; index -= 1) {
@@ -80,6 +89,7 @@
     const result = card.querySelector('[data-quiz-result]');
     const next = card.querySelector('[data-quiz-next]');
     const answers = JSON.parse(card.dataset.answers);
+    const answerText = displayAnswers(answers).join(' 또는 ');
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -89,7 +99,7 @@
       if (correct) score += 1;
       else wrong.push(card);
       result.classList.add(correct ? 'is-correct' : 'is-wrong');
-      result.textContent = correct ? `정답입니다. ${answers[0]}` : `정답: ${answers.join(' 또는 ')}`;
+      result.textContent = correct ? `정답입니다. ${answerText}` : `정답: ${answerText}`;
       result.hidden = false;
       input.disabled = true;
       form.querySelector('button').disabled = true;
