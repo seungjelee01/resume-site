@@ -11,6 +11,7 @@ import sanitizeHtml from 'sanitize-html';
 import { createAnalyticsService } from './analytics-service.js';
 import { createChatService } from './chat-service.js';
 import { createJournalService, JOURNAL_TAGS } from './journal-service.js';
+import { createReadingService, READING_CATEGORIES, READING_STATUSES, READING_TAGS } from './reading-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -50,6 +51,11 @@ const journalDir = process.env.JOURNAL_DIR
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'journal')
     : path.join(rootDir, '_journal');
+const readingDir = process.env.READING_DIR
+  ? path.resolve(process.env.READING_DIR)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'reading')
+    : path.join(rootDir, '_reading');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
@@ -65,6 +71,7 @@ let commentWriteQueue = Promise.resolve();
 const commentRateLimits = new Map();
 const app = express();
 const journalService = createJournalService(journalDir);
+const readingService = createReadingService(readingDir);
 const attachmentNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|pdf|png|jpe?g|gif|webp)$/i;
 const privateFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp)$/i;
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
@@ -768,6 +775,33 @@ function journalSearchText(record) {
   return [record.title, ...journalSections.map(([field]) => record[field]), ...(record.tags || [])].join(' ').toLocaleLowerCase('ko');
 }
 
+const readingSections = Object.freeze([
+  ['reason', '이 책을 읽는 이유'],
+  ['keyPoints', '기억할 핵심 내용'],
+  ['memorable', '인상 깊었던 부분'],
+  ['reflection', '배운 점'],
+  ['application', '실생활·학습에 적용할 점'],
+]);
+
+function readingProgress(record) {
+  if (record.status === 'completed') return 100;
+  if (record.currentPage === null || !record.totalPages) return null;
+  return Math.min(100, Math.round(record.currentPage / record.totalPages * 100));
+}
+
+function readingForm(record, action, submitLabel) {
+  const value = (field) => escapeHtml(record[field] ?? '');
+  const categoryOptions = READING_CATEGORIES.map((category) => `<option value="${category}"${record.category === category ? ' selected' : ''}>${category}</option>`).join('');
+  const statusOptions = Object.entries(READING_STATUSES).map(([status, label]) => `<option value="${status}"${record.status === status ? ' selected' : ''}>${label}</option>`).join('');
+  const tagFields = READING_TAGS.map((tag) => `<label><input type="checkbox" name="tags" value="${tag}"${record.tags?.includes(tag) ? ' checked' : ''}><span>${tag}</span></label>`).join('');
+  const textareas = readingSections.map(([field, label]) => `<label>${label} <small>선택</small><textarea name="${field}" maxlength="5000" rows="5">${value(field)}</textarea></label>`).join('');
+  return `<form class="reading-editor" method="post" action="${action}"><div class="reading-fields"><label>책 제목<input name="title" maxlength="150" value="${value('title')}" required></label><label>저자<input name="author" maxlength="100" value="${value('author')}" required></label><label>출판사 <small>선택</small><input name="publisher" maxlength="100" value="${value('publisher')}"></label><label>독서 분야<select name="category" required>${categoryOptions}</select></label><label>독서 상태<select name="status" required>${statusOptions}</select></label></div><div class="reading-fields reading-dates"><label>시작일 <small>선택</small><input type="date" name="startDate" value="${value('startDate')}"></label><label>완독일 <small>완독 상태일 때 필수</small><input type="date" name="completedDate" value="${value('completedDate')}"></label><label>현재 페이지 <small>선택</small><input type="number" name="currentPage" min="0" max="100000" value="${value('currentPage')}"></label><label>전체 페이지 <small>선택</small><input type="number" name="totalPages" min="0" max="100000" value="${value('totalPages')}"></label></div><fieldset class="journal-tags"><legend>주제·자소서 소재 태그 <small>선택</small></legend><div>${tagFields}</div></fieldset>${textareas}<div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/reading/">취소</a></div></form>`;
+}
+
+function readingSearchText(record) {
+  return [record.title, record.author, record.publisher, record.category, ...readingSections.map(([field]) => record[field]), ...(record.tags || [])].join(' ').toLocaleLowerCase('ko');
+}
+
 function adminLayout(title, content, email, activeSection = '') {
   const icons = {
     dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
@@ -777,6 +811,7 @@ function adminLayout(title, content, email, activeSection = '') {
     chats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><circle cx="9" cy="10" r="1"/><circle cx="12" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg>',
     files: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
     journal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5z"/><path d="M9 3v18M12 8h4M12 12h4"/></svg>',
+    reading: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v18H7.5A3.5 3.5 0 0 0 4 23z"/><path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v18h4.5A3.5 3.5 0 0 1 20 23z"/></svg>',
   };
   const navItem = (section, href, label) => {
     const item = `<a${section === activeSection ? ' class="is-active" aria-current="page"' : ''} href="${href}">${icons[section]}<span>${label}</span></a>`;
@@ -791,7 +826,7 @@ function adminLayout(title, content, email, activeSection = '') {
   const sharedSelected = studyAccess === 'shared' ? ' selected' : '';
   const publicSelected = studyAccess === 'public' ? ' selected' : '';
   const pageTitle = title === '대시보드' ? 'Administration Console · Seungje Lee' : `${escapeHtml(title)} · Administration Console`;
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-2"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260902-1"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('journal', '/admin/journal/', '일기')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-2"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260902-1"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-1"><link rel="stylesheet" href="/admin/assets/admin-reading.css?v=20260902-1"><script src="/admin/assets/admin-settings.js?v=20260828-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('journal', '/admin/journal/', '일기')}${navItem('reading', '/admin/reading/', '독서 기록')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
 }
 
 app.post('/admin/settings/study-access', async (req, res, next) => {
@@ -806,13 +841,98 @@ app.post('/admin/settings/study-access', async (req, res, next) => {
 
 app.get('/admin/', async (_req, res, next) => {
   try {
-    const [posts, files, journals] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list()]);
+    const [posts, files, journals, readings] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list(), readingService.list()]);
     const memory = process.memoryUsage();
     const today = todayInSeoul();
     const wroteToday = journals.some((journal) => journal.date === today);
     const journalHref = wroteToday ? `/admin/journal/${today}/` : '/admin/journal/new';
-    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 사용량</span><strong>${formatFileSize(memory.rss)}</strong><small>Node.js RSS 기준</small></section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
+    const completedThisMonth = readings.filter((book) => book.status === 'completed' && book.completedDate?.startsWith(today.slice(0, 7))).length;
+    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 사용량</span><strong>${formatFileSize(memory.rss)}</strong><small>Node.js RSS 기준</small></section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section><section class="dashboard-card"><span>이번 달 독서</span><strong>${completedThisMonth ? `목표 달성 · ${completedThisMonth}권` : '목표까지 1권'}</strong><a href="/admin/reading/">독서 기록 보기 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
     res.send(adminLayout('대시보드', content, res.locals.adminEmail, 'dashboard'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/reading/', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const allBooks = await readingService.list();
+    const query = String(req.query.q || '').trim().slice(0, 100);
+    const category = READING_CATEGORIES.includes(String(req.query.category || '')) ? String(req.query.category) : '';
+    const status = Object.hasOwn(READING_STATUSES, String(req.query.status || '')) ? String(req.query.status) : '';
+    const books = allBooks.filter((book) => (!query || readingSearchText(book).includes(query.toLocaleLowerCase('ko'))) && (!category || book.category === category) && (!status || book.status === status));
+    const month = todayInSeoul().slice(0, 7);
+    const completedThisMonth = allBooks.filter((book) => book.status === 'completed' && book.completedDate?.startsWith(month)).length;
+    const completedTotal = allBooks.filter((book) => book.status === 'completed').length;
+    const readingCount = allBooks.filter((book) => book.status === 'reading').length;
+    const plannedCount = allBooks.filter((book) => book.status === 'planned').length;
+    const completedByCategory = READING_CATEGORIES.map((item) => ({ category: item, count: allBooks.filter((book) => book.status === 'completed' && book.category === item).length })).filter((item) => item.count);
+    const categorySummary = completedByCategory.length ? completedByCategory.map((item) => `<span>${escapeHtml(item.category)} <strong>${item.count}</strong></span>`).join('') : '<small>완독 기록이 쌓이면 분야별 권수가 표시됩니다.</small>';
+    const currentBooks = allBooks.filter((book) => book.status === 'reading').slice(0, 3);
+    const nextBooks = allBooks.filter((book) => book.status === 'planned').slice(0, 3);
+    const bookLinks = (items, empty) => items.length ? items.map((book) => `<a href="/admin/reading/${book.id}/">${escapeHtml(book.title)} <small>${escapeHtml(book.author)}</small></a>`).join('') : `<span>${empty}</span>`;
+    const categoryOptions = READING_CATEGORIES.map((item) => `<option value="${item}"${item === category ? ' selected' : ''}>${item}</option>`).join('');
+    const statusOptions = Object.entries(READING_STATUSES).map(([item, label]) => `<option value="${item}"${item === status ? ' selected' : ''}>${label}</option>`).join('');
+    const cards = books.map((book) => {
+      const progress = readingProgress(book);
+      const dates = book.completedDate ? `${book.startDate || '시작일 미입력'} → ${book.completedDate}` : book.startDate || '독서일 미입력';
+      return `<article class="reading-card"><header><span>${escapeHtml(book.category)}</span><b class="reading-status is-${book.status}">${READING_STATUSES[book.status]}</b></header><h2><a href="/admin/reading/${book.id}/">${escapeHtml(book.title)}</a></h2><p class="reading-author">${escapeHtml(book.author)}${book.publisher ? ` · ${escapeHtml(book.publisher)}` : ''}</p><small>${escapeHtml(dates)}</small>${progress === null ? '' : `<div class="reading-progress" aria-label="독서 진행률 ${progress}%"><i style="width:${progress}%"></i></div><small>${progress}%${book.totalPages ? ` · ${book.currentPage ?? 0}/${book.totalPages}쪽` : ''}</small>`}<div class="reading-card-tags">${(book.tags || []).map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div></article>`;
+    }).join('');
+    const body = cards || '<p class="reading-empty">조건에 맞는 독서 기록이 없습니다.</p>';
+    const content = `<div class="admin-title"><div><p>PRIVATE READING LOG</p><h1>독서 기록</h1></div><a class="button primary" href="/admin/reading/new">책 추가</a></div><div class="reading-metrics"><section class="${completedThisMonth ? 'is-achieved' : ''}"><span>이번 달 목표</span><strong>${completedThisMonth}/1권</strong><small>${completedThisMonth ? '목표 달성' : '완독까지 1권'}</small></section><section><span>전체 완독</span><strong>${completedTotal}권</strong><small>누적 기록</small></section><section><span>읽는 중</span><strong>${readingCount}권</strong><small>현재 독서</small></section><section><span>읽을 예정</span><strong>${plannedCount}권</strong><small>다음 독서</small></section></div><div class="reading-overview"><section><h2>분야별 완독</h2><div class="reading-category-summary">${categorySummary}</div></section><section><h2>현재 읽는 책</h2><div class="reading-quick-books">${bookLinks(currentBooks, '현재 읽는 책이 없습니다.')}</div></section><section><h2>다음에 읽을 책</h2><div class="reading-quick-books">${bookLinks(nextBooks, '읽을 예정인 책이 없습니다.')}</div></section></div><form class="reading-filter" method="get"><label>검색<input type="search" name="q" value="${escapeHtml(query)}" placeholder="책, 저자 또는 기록 검색"></label><label>분야<select name="category"><option value="">전체</option>${categoryOptions}</select></label><label>상태<select name="status"><option value="">전체</option>${statusOptions}</select></label><button class="button" type="submit">찾기</button>${query || category || status ? '<a class="button" href="/admin/reading/">초기화</a>' : ''}</form><p class="reading-count">${books.length}권의 기록</p><div class="reading-list">${body}</div>`;
+    res.send(adminLayout('독서 기록', content, res.locals.adminEmail, 'reading'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/reading/new', (_req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const content = `<div class="admin-title"><div><p>NEW READING LOG</p><h1>책 추가</h1></div></div>${readingForm({ category: '태도·성장', status: 'planned', tags: [] }, '/admin/reading/new', '저장')}`;
+  res.send(adminLayout('책 추가', content, res.locals.adminEmail, 'reading'));
+});
+
+app.post('/admin/reading/new', async (req, res, next) => {
+  try {
+    const book = await readingService.save(req.body);
+    res.redirect(303, `/admin/reading/${book.id}/`);
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/reading/:id/', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const book = await readingService.load(req.params.id);
+    if (!book) return res.status(404).send('Not found');
+    const progress = readingProgress(book);
+    const details = `<dl class="reading-details"><div><dt>저자</dt><dd>${escapeHtml(book.author)}</dd></div><div><dt>출판사</dt><dd>${escapeHtml(book.publisher || '미입력')}</dd></div><div><dt>분야</dt><dd>${escapeHtml(book.category)}</dd></div><div><dt>상태</dt><dd>${READING_STATUSES[book.status]}</dd></div><div><dt>독서 기간</dt><dd>${escapeHtml(book.startDate || '미입력')} → ${escapeHtml(book.completedDate || '진행 중')}</dd></div><div><dt>진행률</dt><dd>${progress === null ? '미입력' : `${progress}%${book.totalPages ? ` · ${book.currentPage ?? 0}/${book.totalPages}쪽` : ''}`}</dd></div></dl>`;
+    const tags = (book.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
+    const sections = readingSections.filter(([field]) => book[field]).map(([field, label]) => `<section><h2>${label}</h2><p>${escapeHtml(book[field])}</p></section>`).join('');
+    const content = `<div class="admin-title"><div><p>${escapeHtml(book.category)} · ${READING_STATUSES[book.status]}</p><h1>${escapeHtml(book.title)}</h1></div><a class="button" href="/admin/reading/${book.id}/edit">수정</a></div><article class="reading-entry">${details}<div class="reading-entry-tags">${tags}</div>${sections || '<p class="reading-empty-note">아직 작성한 독서 노트가 없습니다.</p>'}</article><form class="delete-form" method="post" action="/admin/reading/${book.id}/delete" onsubmit="return confirm('이 독서 기록을 삭제할까요? 삭제 후 복구할 수 없습니다.')"><button class="button danger" type="submit">삭제</button></form>`;
+    res.send(adminLayout(book.title, content, res.locals.adminEmail, 'reading'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/reading/:id/edit', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const book = await readingService.load(req.params.id);
+    if (!book) return res.status(404).send('Not found');
+    const content = `<div class="admin-title"><div><p>${escapeHtml(book.author)}</p><h1>독서 기록 수정</h1></div></div>${readingForm(book, `/admin/reading/${book.id}/edit`, '변경사항 저장')}`;
+    res.send(adminLayout('독서 기록 수정', content, res.locals.adminEmail, 'reading'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/reading/:id/edit', async (req, res, next) => {
+  try {
+    const book = await readingService.save(req.body, req.params.id);
+    if (!book) return res.status(404).send('Not found');
+    res.redirect(303, `/admin/reading/${book.id}/`);
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/reading/:id/delete', async (req, res, next) => {
+  try {
+    if (!await readingService.load(req.params.id)) return res.status(404).send('Not found');
+    await readingService.remove(req.params.id);
+    res.redirect(303, '/admin/reading/');
   } catch (error) { next(error); }
 });
 
