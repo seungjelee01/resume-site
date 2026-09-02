@@ -74,7 +74,38 @@ const ORACLE_SEED_V2 = Object.freeze([
   ['SELECT 절에 작성한 열의 순서를 숫자로 지정해 정렬하는 방법은?', ['위치 표기법', '위치표기법', 'Position Notation'], 'oracle-order-by'],
 ]);
 
-const SEED_VERSION = 2;
+const ORACLE_SEED_V3 = Object.freeze([
+  ['문자 수가 아니라 바이트 수를 기준으로 문자열 일부를 추출하는 Oracle 함수는?', ['SUBSTRB', 'SUBSTRB()'], 'oracle-character-functions-trim-replace-padding'],
+  ['문자열 양끝에 연속된 지정 문자를 제거하는 Oracle 함수는?', ['TRIM', 'TRIM()'], 'oracle-character-functions-trim-replace-padding'],
+  ['문자열 왼쪽에 연속된 지정 문자를 제거하는 Oracle 함수는?', ['LTRIM', 'LTRIM()'], 'oracle-character-functions-trim-replace-padding'],
+  ['문자열 오른쪽에 연속된 지정 문자를 제거하는 Oracle 함수는?', ['RTRIM', 'RTRIM()'], 'oracle-character-functions-trim-replace-padding'],
+  ['문자열에 포함된 문자를 다른 문자로 치환하는 Oracle 함수는?', ['REPLACE', 'REPLACE()'], 'oracle-character-functions-trim-replace-padding'],
+  ['문자열의 전체 길이를 고정한 뒤 왼쪽의 남는 자리를 지정 문자로 채우는 Oracle 함수는?', ['LPAD', 'LPAD()'], 'oracle-character-functions-trim-replace-padding'],
+  ['문자열의 전체 길이를 고정한 뒤 오른쪽의 남는 자리를 지정 문자로 채우는 Oracle 함수는?', ['RPAD', 'RPAD()'], 'oracle-character-functions-trim-replace-padding'],
+  ['지정한 자릿수를 기준으로 숫자를 반올림하는 Oracle 함수는?', ['ROUND', 'ROUND()'], 'oracle-number-functions'],
+  ['지정한 자릿수 아래의 숫자 값을 버리는 Oracle 함수는?', ['TRUNC', 'TRUNC()'], 'oracle-number-functions'],
+  ['입력값보다 크거나 같은 가장 작은 정수를 반환하는 Oracle 함수는?', ['CEIL', 'CEIL()'], 'oracle-number-functions'],
+  ['입력값보다 작거나 같은 가장 큰 정수를 반환하는 Oracle 함수는?', ['FLOOR', 'FLOOR()'], 'oracle-number-functions'],
+  ['나눗셈의 나머지를 반환하는 Oracle 함수는?', ['MOD', 'MOD()'], 'oracle-number-functions'],
+  ['거듭제곱을 계산하는 Oracle 함수는?', ['POWER', 'POWER()'], 'oracle-number-functions'],
+  ['절대값을 반환하는 Oracle 함수는?', ['ABS', 'ABS()'], 'oracle-number-functions'],
+  ['제곱근을 반환하는 Oracle 함수는?', ['SQRT', 'SQRT()'], 'oracle-number-functions'],
+  ['데이터베이스 서버의 현재 날짜를 반환하는 Oracle 함수는?', ['SYSDATE'], 'oracle-date-functions'],
+  ['데이터베이스 서버의 현재 날짜·시간·타임존을 반환하는 Oracle 함수는?', ['SYSTIMESTAMP'], 'oracle-date-functions'],
+  ['현재 세션 시간대의 날짜를 반환하는 Oracle 함수는?', ['CURRENT_DATE'], 'oracle-date-functions'],
+  ['현재 세션 시간대의 날짜·시간·타임존을 반환하는 Oracle 함수는?', ['CURRENT_TIMESTAMP'], 'oracle-date-functions'],
+  ['현재 세션 시간대의 날짜·시간을 타임존 정보 없이 반환하는 Oracle 함수는?', ['LOCALTIMESTAMP'], 'oracle-date-functions'],
+  ['Oracle에서 사용할 수 있는 타임존 이름을 조회하는 동적 성능 뷰는?', ['V$TIMEZONE_NAMES', 'V$TIMEZONE_NAMES 뷰'], 'oracle-date-functions'],
+  ['타임존 이름에 해당하는 UTC 오프셋을 반환하는 Oracle 함수는?', ['TZ_OFFSET', 'TZ_OFFSET()'], 'oracle-date-functions'],
+  ['두 날짜 사이의 개월 수를 반환하는 Oracle 함수는?', ['MONTHS_BETWEEN', 'MONTHS_BETWEEN()'], 'oracle-date-functions'],
+  ['기준 날짜에 지정한 개월 수를 더하거나 빼는 Oracle 함수는?', ['ADD_MONTHS', 'ADD_MONTHS()'], 'oracle-date-functions'],
+  ['기준 날짜 이후 처음 만나는 지정 요일의 날짜를 반환하는 Oracle 함수는?', ['NEXT_DAY', 'NEXT_DAY()'], 'oracle-date-functions'],
+  ['기준 날짜가 속한 달의 마지막 날짜를 반환하는 Oracle 함수는?', ['LAST_DAY', 'LAST_DAY()'], 'oracle-date-functions'],
+  ['Oracle에서 날짜 값을 지정한 형식의 문자 값으로 변환하는 함수는?', ['TO_CHAR', 'TO_CHAR()'], 'oracle-to-char-date-format'],
+  ['TO_CHAR 날짜 형식에서 앞에 붙는 0이나 공백을 제거하는 형식 요소는?', ['FM'], 'oracle-to-char-date-format'],
+]);
+
+const SEED_VERSION = 3;
 
 function normalizeText(value, label, maxLength, required = false) {
   const text = String(value || '').trim();
@@ -123,7 +154,11 @@ export function createQuizService(directory) {
       }
     }
     const now = new Date().toISOString();
-    const seeds = version === 0 ? [...INITIAL_ORACLE_SQL_SEED, ...ORACLE_SEED_V2] : ORACLE_SEED_V2;
+    const seeds = [
+      ...(version < 1 ? INITIAL_ORACLE_SQL_SEED : []),
+      ...(version < 2 ? ORACLE_SEED_V2 : []),
+      ...(version < 3 ? ORACLE_SEED_V3 : []),
+    ];
     for (const [prompt, answers, relatedSlug] of seeds) {
       if (existingPrompts.has(prompt)) continue;
       await writeRecord({ id: crypto.randomUUID(), prompt, answers, category: 'Oracle', relatedSlug, active: true, createdAt: now, updatedAt: now });
