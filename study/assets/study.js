@@ -253,6 +253,11 @@ function initStudyTagFilter() {
         const normalizedActiveTag = activeTag.toLocaleLowerCase('ko-KR');
         const normalizedSearchTerm = searchTerm.toLocaleLowerCase('ko-KR');
         let visibleCount = 0;
+        const activeCategoryLink = sidebarCategories.find((link) => (link.dataset.sidebarCategory || '').toLocaleLowerCase('ko-KR') === normalizedActiveCategory);
+        const categoryMembers = (activeCategoryLink?.dataset.sidebarCategoryMembers || activeCategory)
+            .split('||')
+            .map((item) => item.trim().toLocaleLowerCase('ko-KR'))
+            .filter(Boolean);
 
         if (searchInput && searchInput.value !== searchTerm) searchInput.value = searchTerm;
 
@@ -263,7 +268,7 @@ function initStudyTagFilter() {
                 .filter(Boolean);
             const category = (note.dataset.category || '').trim().toLocaleLowerCase('ko-KR');
             const matchesFilter = normalizedActiveCategory
-                ? category === normalizedActiveCategory
+                ? categoryMembers.includes(category)
                 : !normalizedActiveTag || tags.includes(normalizedActiveTag);
             const searchableText = (note.dataset.search || '').toLocaleLowerCase('ko-KR');
             const visible = matchesFilter && (!normalizedSearchTerm || searchableText.includes(normalizedSearchTerm));

@@ -254,6 +254,28 @@ a {
     background: rgba(116, 201, 245, 0.16);
 }
 
+.sidebar-category-group {
+    display: grid;
+    gap: 3px;
+}
+
+.sidebar-category-parent {
+    font-weight: 600;
+}
+
+.sidebar-subcategories {
+    display: grid;
+    margin-left: 14px;
+    padding-left: 8px;
+    border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.sidebar-subcategories a {
+    padding-block: 6px;
+    color: var(--study-sidebar-muted);
+    font-size: 12px;
+}
+
 .sidebar-tags {
     display: flex;
     flex-wrap: wrap;
