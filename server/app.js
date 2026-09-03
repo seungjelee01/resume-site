@@ -445,6 +445,21 @@ function normalizeStudyOrder(value) {
   return order;
 }
 
+function normalizeReferences(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 5).flatMap((reference) => {
+    const title = String(reference?.title || '').trim();
+    const href = String(reference?.url || '').trim();
+    if (!title || title.length > 120 || href.length > 500) return [];
+    try {
+      const url = new URL(href);
+      return url.protocol === 'https:' ? [{ title, url: url.toString() }] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
 function validImageBuffer(extension, buffer) {
   if (extension === '.png') return buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
   if (extension === '.jpg' || extension === '.jpeg') return buffer[0] === 0xff && buffer[1] === 0xd8;
@@ -536,6 +551,7 @@ async function loadPosts() {
     const date = normalizeDate(parsed.data.date || filename.slice(0, 10));
     const category = normalizeCategory(parsed.data.category || '기타');
     const tags = Array.isArray(parsed.data.tags) ? parsed.data.tags.map(String) : [];
+    const references = normalizeReferences(parsed.data.references);
     const order = normalizeStudyOrder(parsed.data.order) || titleSequence(parsed.data.title);
     return {
       filename,
@@ -544,6 +560,7 @@ async function loadPosts() {
       date,
       category,
       tags,
+      references,
       order,
       body: parsed.content.trim(),
       attachmentFiles: await loadAttachmentFiles(slugFromFilename(filename)),
@@ -577,6 +594,12 @@ function studyPostNavigation(posts, currentPost) {
   const previousLink = previousPost ? `<a class="series-previous" href="/study/${encodeURIComponent(previousPost.slug)}/"><span>이전 글</span><strong>← ${escapeHtml(previousPost.title)}</strong></a>` : '';
   const nextLink = nextPost ? `<a class="series-next" href="/study/${encodeURIComponent(nextPost.slug)}/"><span>다음 글</span><strong>${escapeHtml(nextPost.title)} →</strong></a>` : '';
   return `<nav class="study-series-nav" aria-label="학습 기록 이전 및 다음 글">${previousLink}${nextLink}</nav>`;
+}
+
+function renderStudyReferences(references) {
+  if (!references.length) return '';
+  const links = references.map((reference) => `<li><a href="${escapeHtml(reference.url)}" target="_blank" rel="noopener noreferrer"><span>${escapeHtml(reference.title)}</span><b aria-hidden="true">↗</b></a></li>`).join('');
+  return `<section class="study-references" aria-labelledby="study-references-title"><h2 id="study-references-title">참고 자료</h2><ul>${links}</ul></section>`;
 }
 
 function formatCommentDate(value) {
@@ -622,6 +645,7 @@ function studySidebar(posts) {
       <section class="sidebar-group"><h2>카테고리</h2><div class="sidebar-categories">${sortedCategories.map(([category, count]) => `<a href="/study/?category=${encodeURIComponent(category)}" data-sidebar-category="${escapeHtml(category)}"><span>${escapeHtml(category)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
       <section class="sidebar-group"><h2>월별 기록</h2><div class="sidebar-months">${[...months].map(([month, count]) => `<a href="/study/#month-${month}"><span>${escapeHtml(month)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
       <section class="sidebar-group"><h2>주제별 태그</h2><div class="sidebar-tags">${tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}" data-sidebar-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div></section>
+      <section class="sidebar-group sidebar-resources"><h2>참고 자료</h2><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/index.html" target="_blank" rel="noopener noreferrer"><span>Oracle 19c SQL Reference</span><b aria-hidden="true">↗</b></a></section>
     </nav><div class="study-sidebar-footer"><a class="study-privacy-link" href="/study/privacy/">개인정보 처리방침</a><button class="study-settings-button" type="button" aria-label="설정" title="설정" data-study-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div>
   </aside>`;
 }
@@ -631,7 +655,7 @@ function studyLayout({ title = '', description = '', content, posts, isHome = fa
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
     <title>${pageTitle}</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#ffffff">
-    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260828-8"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260828-5" defer></script></head>
+    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260903-1"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260828-5" defer></script></head>
     <body class="study-page"><a class="skip-link" href="#study-content">본문으로 바로가기</a><header class="mobile-study-header"><button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>☰</button><a href="/study/">Tech Notes</a></header>
     ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><button class="study-chat-open" type="button" aria-label="Seungje Lee에게 문의하기" aria-expanded="false" aria-controls="study-chat" data-chat-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>문의</span><b data-chat-unread hidden>0</b></button><section class="study-chat" id="study-chat" aria-label="Seungje Lee에게 문의하기" data-chat hidden><header><div><strong>Seungje Lee에게 문의하기</strong><span data-chat-status>연결 준비 중</span></div><button type="button" aria-label="채팅 닫기" data-chat-close>×</button></header><ol aria-live="polite" data-chat-messages></ol><p class="study-chat-privacy">문의 내용은 최근 활동일로부터 90일간 보관됩니다. <a href="/study/privacy/">자세히</a></p><form data-chat-form><label for="chat-message">메시지</label><textarea id="chat-message" maxlength="1000" rows="2" required data-chat-input></textarea><button type="submit">전송</button></form></section><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
 }
@@ -688,7 +712,8 @@ app.get('/study/:slug/', async (req, res, next) => {
     const comments = await loadComments(post.slug);
     const downloadableFiles = post.attachmentFiles.filter((filename) => !imageExtensions.has(path.extname(filename).toLowerCase()));
     const attachments = downloadableFiles.length ? `<section class="study-attachments"><h2>첨부 파일</h2><ul>${downloadableFiles.map((filename) => { const action = filename.toLowerCase().endsWith('.pdf') ? '다운로드' : '보기'; return `<li><a href="/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/"><code>${escapeHtml(filename)}</code> ${action}</a></li>`; }).join('')}</ul></section>` : '';
-    const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${studyPostNavigation(posts, post)}${renderComments(post, comments)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
+    const references = renderStudyReferences(post.references);
+    const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${references}${studyPostNavigation(posts, post)}${renderComments(post, comments)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
     res.send(studyLayout({ title: post.title, description: post.body.slice(0, 150), content, posts }));
     trackStudyVisit(req, { slug: post.slug, title: post.title });
   } catch (error) { next(error); }
@@ -1281,17 +1306,19 @@ async function savePost(req, previousSlug = null) {
   if (!title || !body || !validateSlug(slug)) throw new Error('제목, 본문, 영문 소문자 슬러그를 확인하세요.');
   const uploadedFiles = (req.files || []).map(prepareUploadedFile);
   const posts = await loadPosts();
+  const previousPost = previousSlug ? posts.find((post) => post.slug === previousSlug) : null;
   const order = normalizeStudyOrder(req.body.order) || Math.max(0, ...posts.map((post) => post.order)) + 1;
   if (posts.some((post) => post.slug === slug && post.slug !== previousSlug)) throw new Error('이미 사용 중인 슬러그입니다.');
   const filename = `${date}-${slug}.md`;
-  const output = matter.stringify(`${body}\n`, { title, date, category, tags, order });
+  const metadata = { title, date, category, tags, order };
+  if (previousPost?.references.length) metadata.references = previousPost.references;
+  const output = matter.stringify(`${body}\n`, metadata);
   const target = path.join(postsDir, filename);
   const temporary = path.join(postsDir, `.${crypto.randomUUID()}.tmp`);
   await fs.writeFile(temporary, output, { encoding: 'utf8', mode: 0o640 });
   await fs.rename(temporary, target);
   if (previousSlug) {
-    const previous = posts.find((post) => post.slug === previousSlug);
-    if (previous && previous.filename !== filename) await fs.unlink(path.join(postsDir, previous.filename));
+    if (previousPost && previousPost.filename !== filename) await fs.unlink(path.join(postsDir, previousPost.filename));
     if (previousSlug !== slug) {
       await fs.mkdir(studyFilesDir, { recursive: true });
       try {
