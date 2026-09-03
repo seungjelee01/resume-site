@@ -79,22 +79,35 @@ const app = express();
 const journalService = createJournalService(journalDir);
 const readingService = createReadingService(readingDir);
 const quizService = createQuizService(quizDir);
-const attachmentNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|pdf|png|jpe?g|gif|webp)$/i;
-const privateFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp)$/i;
+const attachmentNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|pdf|png|jpe?g|gif|webp)$/iu;
+const privateFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp)$/iu;
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+
+function normalizeUploadFilename(filename) {
+  const name = String(filename || '').normalize('NFC');
+  const characters = [...name];
+  if (!characters.some((character) => character.codePointAt(0) >= 0x80) || characters.some((character) => character.codePointAt(0) > 0xff)) return name;
+  const bytes = Buffer.from(name, 'latin1');
+  const decoded = bytes.toString('utf8').normalize('NFC');
+  return decoded.includes('\ufffd') || !Buffer.from(decoded, 'utf8').equals(bytes) ? name : decoded;
+}
+
+function uploadFileFilter(pattern, errorMessage) {
+  return (_req, file, callback) => {
+    file.originalname = normalizeUploadFilename(file.originalname);
+    return pattern.test(file.originalname) ? callback(null, true) : callback(new Error(errorMessage));
+  };
+}
+
 const attachmentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024, files: 5 },
-  fileFilter: (_req, file, callback) => attachmentNamePattern.test(file.originalname)
-    ? callback(null, true)
-    : callback(new Error('지원하는 Python, PDF 또는 이미지 파일만 업로드할 수 있습니다.')),
+  fileFilter: uploadFileFilter(attachmentNamePattern, '지원하는 Python, PDF 또는 이미지 파일만 업로드할 수 있습니다.'),
 });
 const privateFileUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024, files: 5 },
-  fileFilter: (_req, file, callback) => privateFileNamePattern.test(file.originalname)
-    ? callback(null, true)
-    : callback(new Error('지원하는 Python, SQL, TXT, PDF 또는 이미지 파일만 업로드할 수 있습니다.')),
+  fileFilter: uploadFileFilter(privateFileNamePattern, '지원하는 Python, SQL, TXT, PDF 또는 이미지 파일만 업로드할 수 있습니다.'),
 });
 
 marked.setOptions({ gfm: true, breaks: false });
