@@ -516,8 +516,23 @@ a {
 }
 
 .study-note-content img {
+    display: block;
     max-width: 100%;
     height: auto;
+    margin: 1.25em auto 2em;
+    border: 1px solid var(--study-border);
+    border-radius: 6px;
+    background: var(--study-surface);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--study-text) 8%, transparent);
+}
+
+.study-note-content a > img {
+    cursor: zoom-in;
+}
+
+.study-note-content a:focus-visible > img {
+    outline: 2px solid var(--study-accent);
+    outline-offset: 3px;
 }
 
 .study-note-content pre {
