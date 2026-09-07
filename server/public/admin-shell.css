@@ -398,9 +398,9 @@ html[data-admin-theme='dark'] .admin-sidebar {
 }
 
 .memory-status > div {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: baseline;
-    justify-content: space-between;
     gap: 16px;
 }
 
@@ -416,6 +416,18 @@ html[data-admin-theme='dark'] .admin-sidebar {
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.02em;
     white-space: nowrap;
+}
+
+.memory-status > div:first-child dd {
+    color: var(--accent);
+}
+
+.memory-status > div:last-child dd {
+    color: #3e9b5d;
+}
+
+html[data-admin-theme='dark'] .memory-status > div:last-child dd {
+    color: #70c98c;
 }
 
 .dashboard-card small,
