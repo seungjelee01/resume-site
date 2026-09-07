@@ -31,7 +31,7 @@ const translations = {
   '서버 상태': 'Server Status',
   '정상 작동 중': 'Running Normally',
   '메모리 사용량': 'Memory Usage',
-  'Node.js RSS 기준': 'Based on Node.js RSS',
+  'Node.js 사용 · 시스템 여유': 'Node.js Usage · System Available',
   '비공개 파일': 'Private Files',
   '글 관리 →': 'Manage Notes →',
   '파일 관리 →': 'Manage Files →',
