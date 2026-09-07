@@ -390,6 +390,34 @@ html[data-admin-theme='dark'] .admin-sidebar {
     line-height: 1.3;
 }
 
+.memory-status {
+    display: grid;
+    align-self: end;
+    gap: 8px;
+    margin: 0;
+}
+
+.memory-status > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.memory-status dt {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.memory-status dd {
+    margin: 0;
+    color: var(--ink);
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
 .dashboard-card small,
 .dashboard-card a {
     align-self: end;
