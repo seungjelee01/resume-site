@@ -1353,10 +1353,11 @@ async function savePost(req, previousSlug = null) {
     }
   }
   await storeUploadedFiles(uploadedFiles, path.join(studyFilesDir, slug));
+  return slug;
 }
 
-app.post('/admin/new', attachmentUpload.array('attachmentFiles', 5), async (req, res, next) => { try { await savePost(req); res.redirect('/admin/notes/'); } catch (error) { next(error); } });
-app.post('/admin/edit/:slug', attachmentUpload.array('attachmentFiles', 5), async (req, res, next) => { try { await savePost(req, req.params.slug); res.redirect('/admin/notes/'); } catch (error) { next(error); } });
+app.post('/admin/new', attachmentUpload.array('attachmentFiles', 5), async (req, res, next) => { try { const slug = await savePost(req); res.redirect(303, `/admin/edit/${encodeURIComponent(slug)}`); } catch (error) { next(error); } });
+app.post('/admin/edit/:slug', attachmentUpload.array('attachmentFiles', 5), async (req, res, next) => { try { const slug = await savePost(req, req.params.slug); res.redirect(303, `/admin/edit/${encodeURIComponent(slug)}`); } catch (error) { next(error); } });
 app.post('/admin/edit/:slug/files/:filename/delete', async (req, res, next) => {
   try {
     if (!validateSlug(req.params.slug) || !attachmentNamePattern.test(req.params.filename)) return res.status(404).send('Not found');
