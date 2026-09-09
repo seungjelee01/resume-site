@@ -108,6 +108,11 @@ function initStudyChat() {
         input.focus();
     });
     closeButton.addEventListener('click', () => { panel.hidden = true; openButton.hidden = false; openButton.setAttribute('aria-expanded', 'false'); openButton.focus(); });
+    input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+        event.preventDefault();
+        form.requestSubmit();
+    });
     form.addEventListener('submit', (event) => {
         event.preventDefault();
         const content = input.value.trim();

@@ -37,6 +37,11 @@ if (panel && messages && status && form && input) {
     });
     socket.addEventListener('close', () => { status.textContent = '연결이 끊겨 재연결 중입니다.'; reconnectTimer = setTimeout(connect, 2000); });
   };
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    form.requestSubmit();
+  });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const content = input.value.trim();
