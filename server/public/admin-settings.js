@@ -179,6 +179,7 @@ const themeSelect = document.querySelector('[data-admin-theme]');
 const languageSelect = document.querySelector('[data-admin-language]');
 const chatNotifications = document.querySelector('[data-admin-chat-notifications]');
 const chatNotificationStatus = document.querySelector('[data-admin-chat-notification-status]');
+const chatUnreadBadge = document.querySelector('[data-admin-chat-unread]');
 const savedTheme = localStorage.getItem(storageKeys.theme) || 'system';
 const savedLanguage = localStorage.getItem(storageKeys.language) || 'ko';
 
@@ -189,19 +190,31 @@ applyTheme(savedTheme);
 translatePage(savedLanguage);
 
 function initChatNotifications() {
-  if (!chatNotifications || !chatNotificationStatus || !('Notification' in window)) {
+  if (!chatUnreadBadge) return;
+  const unreadByRoom = new Map();
+  const notificationsSupported = Boolean(chatNotifications && chatNotificationStatus && 'Notification' in window);
+
+  const updateBadge = () => {
+    const count = [...unreadByRoom.values()].reduce((sum, unread) => sum + unread, 0);
+    chatUnreadBadge.textContent = count > 99 ? '99+' : String(count);
+    chatUnreadBadge.hidden = count === 0;
+    chatUnreadBadge.setAttribute('aria-label', `읽지 않은 문의 ${count}개`);
+  };
+
+  if (!notificationsSupported) {
     if (chatNotifications) chatNotifications.disabled = true;
     if (chatNotificationStatus) chatNotificationStatus.textContent = '이 브라우저에서는 데스크톱 알림을 지원하지 않습니다.';
-    return;
   }
 
   const updateState = () => {
+    if (!notificationsSupported) return;
     const enabled = localStorage.getItem(storageKeys.chatNotifications) === 'enabled';
     chatNotifications.checked = enabled && Notification.permission === 'granted';
     if (Notification.permission === 'denied') chatNotificationStatus.textContent = '브라우저 설정에서 알림 권한을 허용해야 합니다.';
     else chatNotificationStatus.textContent = '브라우저가 열려 있을 때만 알림을 받을 수 있습니다.';
   };
   const displayNotification = (room) => {
+    if (!notificationsSupported) return;
     const notification = new Notification('새 문의가 도착했습니다', {
       body: '관리자 콘솔에서 확인하세요.',
       icon: '/favicon-32x32.png',
@@ -214,10 +227,9 @@ function initChatNotifications() {
     });
   };
   const notifyOnce = async (room) => {
+    if (!document.hidden || !notificationsSupported) return;
     if (localStorage.getItem(storageKeys.chatNotifications) !== 'enabled' || Notification.permission !== 'granted') return;
     if (room.lastSender !== 'visitor') return;
-    const currentRoom = document.querySelector('[data-admin-chat]')?.dataset.conversationId;
-    if (currentRoom === room.id && !document.hidden) return;
     const notificationKey = `admin-chat-notified:${room.id}:${room.updatedAt}`;
     const claim = () => {
       if (localStorage.getItem(notificationKey)) return;
@@ -232,12 +244,23 @@ function initChatNotifications() {
     const socket = new WebSocket(`${protocol}//${location.host}/admin/ws/chat-list`);
     socket.addEventListener('message', (event) => {
       const payload = JSON.parse(event.data);
-      if (payload.type === 'room') notifyOnce(payload.room);
+      if (payload.type === 'rooms') {
+        unreadByRoom.clear();
+        payload.rooms.forEach((room) => unreadByRoom.set(room.id, Number(room.unread) || 0));
+        updateBadge();
+      } else if (payload.type === 'room') {
+        unreadByRoom.set(payload.room.id, Number(payload.room.unread) || 0);
+        updateBadge();
+        notifyOnce(payload.room);
+      } else if (payload.type === 'room-deleted') {
+        unreadByRoom.delete(payload.id);
+        updateBadge();
+      }
     });
     socket.addEventListener('close', () => window.setTimeout(connect, 2000));
   };
 
-  chatNotifications.addEventListener('change', async () => {
+  chatNotifications?.addEventListener('change', async () => {
     if (!chatNotifications.checked) {
       localStorage.removeItem(storageKeys.chatNotifications);
       updateState();
@@ -248,7 +271,7 @@ function initChatNotifications() {
     else localStorage.removeItem(storageKeys.chatNotifications);
     updateState();
   });
-  updateState();
+  if (notificationsSupported) updateState();
   connect();
 }
 

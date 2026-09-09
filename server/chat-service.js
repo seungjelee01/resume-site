@@ -210,6 +210,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
     webSocketServer.on('connection', async (socket, { conversation, isAdmin, isAdminList }) => {
       if (isAdminList) {
         adminListClients.add(socket);
+        socket.send(JSON.stringify({ type: 'rooms', rooms: (await list()).map(roomSummary) }));
         socket.on('close', () => adminListClients.delete(socket));
         return;
       }

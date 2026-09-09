@@ -91,6 +91,23 @@
     background: rgba(116, 201, 245, 0.16);
 }
 
+.admin-nav-unread {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    margin-left: auto;
+    padding: 0 6px;
+    border-radius: 10px;
+    color: #102a39;
+    background: #74c9f5;
+    font: 700 11px/1 var(--sans);
+}
+
+.admin-nav-unread[hidden] {
+    display: none;
+}
+
 .admin-external-links {
     display: grid;
     gap: 4px;
