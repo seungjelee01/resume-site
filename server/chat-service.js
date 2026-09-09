@@ -90,6 +90,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
     id: conversation.id,
     visitorLabel: `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`,
     preview: conversation.messages.at(-1)?.content || '아직 메시지가 없습니다.',
+    lastSender: conversation.messages.at(-1)?.sender || '',
     updatedAt: conversation.updatedAt,
     unread: conversation.unread || 0,
     ipMasked: conversation.ipMasked,

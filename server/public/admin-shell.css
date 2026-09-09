@@ -266,6 +266,43 @@
     border-top: 1px solid var(--line);
 }
 
+.admin-settings-notifications {
+    display: grid;
+    gap: 10px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+}
+
+.admin-settings-notifications h3,
+.admin-settings-notifications small {
+    margin: 0;
+}
+
+.admin-settings-notifications h3 {
+    color: var(--ink);
+    font-size: 14px;
+}
+
+.admin-settings-notifications label {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 14px;
+}
+
+.admin-settings-notifications input {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.admin-settings-notifications small {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
 .admin-settings-access h3,
 .admin-settings-access small {
     margin: 0;

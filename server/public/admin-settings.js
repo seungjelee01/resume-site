@@ -1,6 +1,7 @@
 const storageKeys = {
   theme: 'admin-theme',
   language: 'admin-language',
+  chatNotifications: 'admin-chat-notifications',
 };
 
 const translations = {
@@ -19,6 +20,9 @@ const translations = {
   다크: 'Dark',
   언어: 'Language',
   한국어: 'Korean',
+  '문의 알림': 'Inquiry Notifications',
+  '새 문의를 데스크톱 알림으로 받기': 'Receive desktop notifications for new inquiries',
+  '브라우저가 열려 있을 때만 알림을 받을 수 있습니다.': 'Notifications are available only while the browser is open.',
   'Tech Notes 접근': 'Tech Notes Access',
   '공유 링크 필요': 'Share Link Required',
   공개: 'Public',
@@ -173,6 +177,8 @@ function applyTheme(theme) {
 const dialog = document.querySelector('[data-admin-settings]');
 const themeSelect = document.querySelector('[data-admin-theme]');
 const languageSelect = document.querySelector('[data-admin-language]');
+const chatNotifications = document.querySelector('[data-admin-chat-notifications]');
+const chatNotificationStatus = document.querySelector('[data-admin-chat-notification-status]');
 const savedTheme = localStorage.getItem(storageKeys.theme) || 'system';
 const savedLanguage = localStorage.getItem(storageKeys.language) || 'ko';
 
@@ -181,6 +187,72 @@ themeSelect.value = savedTheme;
 languageSelect.value = savedLanguage;
 applyTheme(savedTheme);
 translatePage(savedLanguage);
+
+function initChatNotifications() {
+  if (!chatNotifications || !chatNotificationStatus || !('Notification' in window)) {
+    if (chatNotifications) chatNotifications.disabled = true;
+    if (chatNotificationStatus) chatNotificationStatus.textContent = '이 브라우저에서는 데스크톱 알림을 지원하지 않습니다.';
+    return;
+  }
+
+  const updateState = () => {
+    const enabled = localStorage.getItem(storageKeys.chatNotifications) === 'enabled';
+    chatNotifications.checked = enabled && Notification.permission === 'granted';
+    if (Notification.permission === 'denied') chatNotificationStatus.textContent = '브라우저 설정에서 알림 권한을 허용해야 합니다.';
+    else chatNotificationStatus.textContent = '브라우저가 열려 있을 때만 알림을 받을 수 있습니다.';
+  };
+  const displayNotification = (room) => {
+    const notification = new Notification('새 문의가 도착했습니다', {
+      body: '관리자 콘솔에서 확인하세요.',
+      icon: '/favicon-32x32.png',
+      tag: `admin-chat-${room.id}`,
+    });
+    notification.addEventListener('click', () => {
+      window.focus();
+      window.location.href = `/admin/chats/${encodeURIComponent(room.id)}/`;
+      notification.close();
+    });
+  };
+  const notifyOnce = async (room) => {
+    if (localStorage.getItem(storageKeys.chatNotifications) !== 'enabled' || Notification.permission !== 'granted') return;
+    if (room.lastSender !== 'visitor') return;
+    const currentRoom = document.querySelector('[data-admin-chat]')?.dataset.conversationId;
+    if (currentRoom === room.id && !document.hidden) return;
+    const notificationKey = `admin-chat-notified:${room.id}:${room.updatedAt}`;
+    const claim = () => {
+      if (localStorage.getItem(notificationKey)) return;
+      localStorage.setItem(notificationKey, '1');
+      displayNotification(room);
+    };
+    if (navigator.locks?.request) await navigator.locks.request('admin-chat-notification', claim);
+    else claim();
+  };
+  const connect = () => {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new WebSocket(`${protocol}//${location.host}/admin/ws/chat-list`);
+    socket.addEventListener('message', (event) => {
+      const payload = JSON.parse(event.data);
+      if (payload.type === 'room') notifyOnce(payload.room);
+    });
+    socket.addEventListener('close', () => window.setTimeout(connect, 2000));
+  };
+
+  chatNotifications.addEventListener('change', async () => {
+    if (!chatNotifications.checked) {
+      localStorage.removeItem(storageKeys.chatNotifications);
+      updateState();
+      return;
+    }
+    const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (permission === 'granted') localStorage.setItem(storageKeys.chatNotifications, 'enabled');
+    else localStorage.removeItem(storageKeys.chatNotifications);
+    updateState();
+  });
+  updateState();
+  connect();
+}
+
+initChatNotifications();
 
 document.querySelector('[data-admin-settings-open]')?.addEventListener('click', () => dialog.showModal());
 
