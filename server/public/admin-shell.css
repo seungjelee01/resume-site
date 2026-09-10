@@ -495,6 +495,107 @@ html[data-admin-theme='dark'] .memory-status > div:last-child dd {
     color: var(--accent);
 }
 
+.managed-services {
+    margin-top: 28px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+}
+
+.managed-services > header {
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--line);
+}
+
+.managed-services h2,
+.managed-services p {
+    margin: 0;
+}
+
+.managed-services h2 {
+    color: var(--ink);
+    font-size: 17px;
+}
+
+.managed-services p {
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.managed-services-table {
+    overflow-x: auto;
+}
+
+.managed-services table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+
+.managed-services th,
+.managed-services td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+}
+
+.managed-services th {
+    color: var(--faint);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.managed-services td {
+    color: var(--text);
+    font: 12px/1.5 var(--mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.managed-services tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.managed-services td:first-child strong {
+    color: var(--ink);
+    font: 650 13px/1.5 var(--sans);
+}
+
+.service-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font: 650 12px/1.5 var(--sans);
+}
+
+.service-state::before {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--faint);
+    content: '';
+}
+
+.service-state.is-running {
+    color: #3e9b5d;
+}
+
+.service-state.is-running::before {
+    background: currentColor;
+}
+
+.service-state.is-stopped {
+    color: var(--danger);
+}
+
+.service-state.is-stopped::before {
+    background: currentColor;
+}
+
+html[data-admin-theme='dark'] .service-state.is-running {
+    color: #70c98c;
+}
+
 .server-details {
     margin-top: 28px;
     padding: 22px;
