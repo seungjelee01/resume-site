@@ -18,6 +18,21 @@ async function readProcessStats(pid) {
   }
 }
 
+async function readNamedProcessStats(name) {
+  if (name !== 'cloudflared') return null;
+  try {
+    const { stdout } = await execFileAsync('/usr/bin/ps', ['-C', name, '-o', 'pid=,%cpu=,rss=,etimes='], {
+      timeout: 1500,
+      maxBuffer: 4096,
+    });
+    const [pid, cpu, rss, uptime] = stdout.trim().split('\n')[0].trim().split(/\s+/).map(Number);
+    if (![pid, cpu, rss, uptime].every(Number.isFinite) || pid <= 0) return null;
+    return { pid, cpu, memory: rss * 1024, uptime };
+  } catch {
+    return null;
+  }
+}
+
 async function readUserService(unit) {
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
   const env = uid === null ? process.env : { ...process.env, XDG_RUNTIME_DIR: `/run/user/${uid}` };
@@ -45,7 +60,10 @@ export async function loadServiceStatuses() {
     readProcessStats(process.pid),
     readUserService('cloudflared-resume.service'),
   ]);
-  const tunnelStats = tunnelService.running ? await readProcessStats(tunnelService.pid) : null;
+  const tunnelStats = tunnelService.running
+    ? await readProcessStats(tunnelService.pid)
+    : await readNamedProcessStats('cloudflared');
+  const tunnelRunning = tunnelStats ? true : tunnelService.running;
 
   return [
     {
@@ -58,8 +76,8 @@ export async function loadServiceStatuses() {
     },
     {
       name: 'Cloudflare Tunnel',
-      status: tunnelService.running === null ? 'unknown' : tunnelService.running ? 'running' : 'stopped',
-      pid: tunnelService.pid,
+      status: tunnelRunning === null ? 'unknown' : tunnelRunning ? 'running' : 'stopped',
+      pid: tunnelStats?.pid ?? tunnelService.pid,
       cpu: tunnelStats?.cpu ?? null,
       memory: tunnelStats?.memory ?? null,
       uptime: tunnelStats?.uptime ?? null,
