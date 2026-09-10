@@ -20,6 +20,7 @@ function initStudyChat() {
     let initialized = false;
     let conversationId = '';
     let adminMessages = [];
+    const notificationPreferenceKey = 'study-chat-notifications';
 
     const readKey = () => `study-chat-last-read:${conversationId}`;
     const updateUnread = () => {
@@ -34,6 +35,27 @@ function initStudyChat() {
         const latest = adminMessages.at(-1)?.createdAt || new Date().toISOString();
         localStorage.setItem(readKey(), latest);
         updateUnread();
+    };
+    const notifyAdminReply = async (message) => {
+        if (!document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
+        if (localStorage.getItem(notificationPreferenceKey) !== 'enabled') return;
+        const notificationKey = `study-chat-notified:${message.id}`;
+        const displayNotification = () => {
+            if (localStorage.getItem(notificationKey)) return;
+            localStorage.setItem(notificationKey, '1');
+            const notification = new Notification('문의에 새로운 답변이 도착했습니다', {
+                body: 'Tech Notes에서 답변을 확인하세요.',
+                icon: '/favicon-32x32.png',
+                tag: `study-chat-${conversationId}`,
+            });
+            notification.addEventListener('click', () => {
+                window.focus();
+                if (panel.hidden) openButton.click();
+                notification.close();
+            });
+        };
+        if (navigator.locks?.request) await navigator.locks.request('study-chat-notification', displayNotification);
+        else displayNotification();
     };
 
     const renderMessage = (message) => {
@@ -77,6 +99,7 @@ function initStudyChat() {
                 if (payload.type === 'ready') {
                     conversationId = payload.id;
                     adminMessages = payload.messages.filter((message) => message.sender === 'admin');
+                    if (payload.messages.some((message) => message.sender === 'visitor')) localStorage.setItem('study-chat-has-session', 'true');
                     messages.replaceChildren();
                     payload.messages.forEach(renderMessage);
                     if (panel.hidden) updateUnread();
@@ -87,6 +110,7 @@ function initStudyChat() {
                         adminMessages.push(payload.message);
                         if (panel.hidden) updateUnread();
                         else markRead();
+                        notifyAdminReply(payload.message);
                     }
                 }
                 else if (payload.type === 'error') status.textContent = payload.message;
@@ -118,15 +142,38 @@ function initStudyChat() {
         const content = input.value.trim();
         if (!content || socket?.readyState !== WebSocket.OPEN) return;
         socket.send(JSON.stringify({ type: 'message', content }));
+        localStorage.setItem('study-chat-has-session', 'true');
         input.value = '';
     });
+    if (localStorage.getItem('study-chat-has-session') === 'true') connect();
 }
 
 function initStudyTheme() {
     const dialog = document.querySelector('[data-study-settings]');
     const openButton = document.querySelector('[data-study-settings-open]');
     const themeSelect = document.querySelector('[data-study-theme]');
+    let notificationToggle = document.querySelector('[data-study-chat-notifications]');
+    let notificationStatus = document.querySelector('[data-study-chat-notification-status]');
     if (!dialog || !openButton || !themeSelect) return;
+
+    if (!notificationToggle || !notificationStatus) {
+        const section = document.createElement('section');
+        section.className = 'study-settings-notifications';
+        const heading = document.createElement('h3');
+        heading.textContent = '문의 답변 알림';
+        const label = document.createElement('label');
+        notificationToggle = document.createElement('input');
+        notificationToggle.type = 'checkbox';
+        notificationToggle.dataset.studyChatNotifications = '';
+        const labelText = document.createElement('span');
+        labelText.textContent = '관리자 답변을 데스크톱 알림으로 받기';
+        label.append(notificationToggle, labelText);
+        notificationStatus = document.createElement('small');
+        notificationStatus.dataset.studyChatNotificationStatus = '';
+        notificationStatus.textContent = 'Tech Notes가 열려 있을 때만 알림을 받을 수 있습니다.';
+        section.append(heading, label, notificationStatus);
+        dialog.querySelector('.study-settings-done')?.before(section);
+    }
 
     const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
     const legacyTheme = localStorage.getItem('darkMode');
@@ -147,6 +194,34 @@ function initStudyTheme() {
         localStorage.removeItem('darkMode');
         applyTheme(themeSelect.value);
     });
+    if (notificationToggle && notificationStatus) {
+        const notificationsSupported = 'Notification' in window;
+        const updateNotificationState = () => {
+            if (!notificationsSupported) {
+                notificationToggle.checked = false;
+                notificationToggle.disabled = true;
+                notificationStatus.textContent = '이 브라우저에서는 데스크톱 알림을 지원하지 않습니다.';
+                return;
+            }
+            notificationToggle.checked = localStorage.getItem('study-chat-notifications') === 'enabled'
+                && Notification.permission === 'granted';
+            notificationStatus.textContent = Notification.permission === 'denied'
+                ? '브라우저 설정에서 알림 권한을 허용해야 합니다.'
+                : 'Tech Notes가 열려 있을 때만 알림을 받을 수 있습니다.';
+        };
+        notificationToggle.addEventListener('change', async () => {
+            if (!notificationToggle.checked) {
+                localStorage.removeItem('study-chat-notifications');
+                updateNotificationState();
+                return;
+            }
+            const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+            if (permission === 'granted') localStorage.setItem('study-chat-notifications', 'enabled');
+            else localStorage.removeItem('study-chat-notifications');
+            updateNotificationState();
+        });
+        updateNotificationState();
+    }
     systemTheme.addEventListener?.('change', () => {
         if (themeSelect.value === 'system') applyTheme('system');
     });
