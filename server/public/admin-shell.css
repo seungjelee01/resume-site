@@ -464,6 +464,7 @@ html[data-admin-theme='dark'] .admin-sidebar {
 .resource-status dt {
     color: var(--muted);
     font: 600 14px/1.5 var(--sans);
+    white-space: nowrap;
 }
 
 .memory-status dd,
