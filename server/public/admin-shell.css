@@ -477,18 +477,12 @@ html[data-admin-theme='dark'] .admin-sidebar {
     white-space: nowrap;
 }
 
-.memory-status > div:first-child dd {
-    color: var(--accent);
-}
-
-.memory-status > div:last-child dd {
-    color: #3e9b5d;
-}
-
+.memory-status > div:first-child dd,
 .disk-status > div:first-child dd {
     color: var(--accent);
 }
 
+.memory-status > div:last-child dd,
 .disk-status > div:last-child dd {
     color: #3e9b5d;
 }
@@ -496,6 +490,10 @@ html[data-admin-theme='dark'] .admin-sidebar {
 html[data-admin-theme='dark'] .memory-status > div:last-child dd,
 html[data-admin-theme='dark'] .disk-status > div:last-child dd {
     color: #70c98c;
+}
+
+.disk-total {
+    white-space: nowrap;
 }
 
 .dashboard-card small,
