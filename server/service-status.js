@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { statfs } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -55,14 +56,48 @@ async function readUserService(unit) {
   }
 }
 
+async function readSystemService(unit) {
+  try {
+    const { stdout } = await execFileAsync('/usr/bin/systemctl', [
+      'show',
+      unit,
+      '--property=ActiveState',
+      '--property=MainPID',
+    ], { timeout: 1500, maxBuffer: 4096 });
+    const properties = Object.fromEntries(stdout.trim().split('\n').map((line) => line.split(/=(.*)/s).slice(0, 2)));
+    const pid = Number(properties.MainPID);
+    return {
+      running: properties.ActiveState === 'active' && Number.isInteger(pid) && pid > 0,
+      pid: Number.isInteger(pid) && pid > 0 ? pid : null,
+    };
+  } catch {
+    return { running: null, pid: null };
+  }
+}
+
+export async function loadDiskStatus(target = '/') {
+  try {
+    const stats = await statfs(target);
+    const total = Number(stats.blocks) * Number(stats.bsize);
+    const available = Number(stats.bavail) * Number(stats.bsize);
+    if (![total, available].every(Number.isFinite) || total <= 0 || available < 0) return null;
+    const used = Math.max(0, total - available);
+    return { total, used, available, percent: Math.min(100, used / total * 100) };
+  } catch {
+    return null;
+  }
+}
+
 export async function loadServiceStatuses() {
-  const [applicationStats, tunnelService] = await Promise.all([
+  const [applicationStats, tunnelService, aiChatService] = await Promise.all([
     readProcessStats(process.pid),
     readUserService('cloudflared-resume.service'),
+    readSystemService('ai-chat.service'),
   ]);
-  const tunnelStats = tunnelService.running
-    ? await readProcessStats(tunnelService.pid)
-    : await readNamedProcessStats('cloudflared');
+  const [tunnelStats, aiChatStats] = await Promise.all([
+    tunnelService.running ? readProcessStats(tunnelService.pid) : readNamedProcessStats('cloudflared'),
+    aiChatService.running ? readProcessStats(aiChatService.pid) : null,
+  ]);
   const tunnelRunning = tunnelStats ? true : tunnelService.running;
 
   return [
@@ -81,6 +116,14 @@ export async function loadServiceStatuses() {
       cpu: tunnelStats?.cpu ?? null,
       memory: tunnelStats?.memory ?? null,
       uptime: tunnelStats?.uptime ?? null,
+    },
+    {
+      name: 'AI Chat',
+      status: aiChatService.running === null ? 'unknown' : aiChatService.running ? 'running' : 'stopped',
+      pid: aiChatStats?.pid ?? aiChatService.pid,
+      cpu: aiChatStats?.cpu ?? null,
+      memory: aiChatStats?.memory ?? null,
+      uptime: aiChatStats?.uptime ?? null,
     },
   ];
 }

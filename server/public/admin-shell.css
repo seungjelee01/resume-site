@@ -444,26 +444,30 @@ html[data-admin-theme='dark'] .admin-sidebar {
     line-height: 1.3;
 }
 
-.memory-status {
+.memory-status,
+.resource-status {
     display: grid;
     align-self: end;
     gap: 8px;
     margin: 0;
 }
 
-.memory-status > div {
+.memory-status > div,
+.resource-status > div {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: baseline;
     gap: 16px;
 }
 
-.memory-status dt {
+.memory-status dt,
+.resource-status dt {
     color: var(--muted);
     font: 600 14px/1.5 var(--sans);
 }
 
-.memory-status dd {
+.memory-status dd,
+.resource-status dd {
     margin: 0;
     color: var(--ink);
     font: 650 20px/1.35 var(--sans);
@@ -480,7 +484,16 @@ html[data-admin-theme='dark'] .admin-sidebar {
     color: #3e9b5d;
 }
 
-html[data-admin-theme='dark'] .memory-status > div:last-child dd {
+.disk-status > div:first-child dd {
+    color: var(--accent);
+}
+
+.disk-status > div:last-child dd {
+    color: #3e9b5d;
+}
+
+html[data-admin-theme='dark'] .memory-status > div:last-child dd,
+html[data-admin-theme='dark'] .disk-status > div:last-child dd {
     color: #70c98c;
 }
 

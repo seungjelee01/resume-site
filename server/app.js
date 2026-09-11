@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,7 +15,7 @@ import { createChatService } from './chat-service.js';
 import { createJournalService, JOURNAL_TAGS } from './journal-service.js';
 import { createReadingService, READING_CATEGORIES, READING_STATUSES, READING_TAGS } from './reading-service.js';
 import { createQuizService } from './quiz-service.js';
-import { loadServiceStatuses } from './service-status.js';
+import { loadDiskStatus, loadServiceStatuses } from './service-status.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -395,6 +396,7 @@ function trackStudyVisit(req, page) {
 
 app.use('/resume', requireResumeShare);
 app.use('/study', requireStudyShare);
+app.use('/study', (_req, res, next) => { res.setHeader('Cache-Control', 'private, no-store'); next(); });
 app.use('/study/assets', express.static(path.join(rootDir, 'study', 'assets'), { maxAge: '1h' }));
 app.use('/admin/assets', express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
@@ -645,6 +647,16 @@ function renderComments(post, comments) {
   return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${commentCount}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><p class="study-comment-privacy">등록한 이름과 댓글은 누구나 볼 수 있습니다. <a href="/study/privacy/">개인정보 처리방침</a></p><button type="submit">댓글 등록</button></form></section>`;
 }
 
+function aiChatEntryUrl() {
+  try {
+    const key = readFileSync(process.env.TECH_NOTES_ENTRY_SECRET_FILE || '/opt/resume/shared/ai-chat-entry.key', 'utf8').trim();
+    if (key.length < 64) return '/ai-chat/';
+    const payload = Buffer.from(JSON.stringify({ kind: 'entry', aud: 'ai-chat', nonce: crypto.randomBytes(24).toString('base64url'), exp: Date.now() + 600_000 })).toString('base64url');
+    const signature = crypto.createHmac('sha256', key).update(payload).digest('base64url');
+    return `/ai-chat/entry?ticket=${payload}.${signature}`;
+  } catch { return '/ai-chat/'; }
+}
+
 function studySidebar(posts) {
   const categories = posts.reduce((result, post) => {
     result.set(post.category, (result.get(post.category) || 0) + 1);
@@ -670,6 +682,7 @@ function studySidebar(posts) {
       <section class="sidebar-group"><h2>월별 기록</h2><div class="sidebar-months">${[...months].map(([month, count]) => `<a href="/study/#month-${month}"><span>${escapeHtml(month)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
       <section class="sidebar-group"><h2>주제별 태그</h2><div class="sidebar-tags">${tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}" data-sidebar-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div></section>
       <section class="sidebar-group sidebar-resources"><h2>참고 자료</h2><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/index.html" target="_blank" rel="noopener noreferrer"><span>Oracle 19c SQL Reference</span><b aria-hidden="true">↗</b></a></section>
+      <section class="sidebar-group sidebar-resources"><a href="${aiChatEntryUrl()}"><span>AI Chat</span><b aria-hidden="true">→</b></a></section>
     </nav><div class="study-sidebar-footer"><a class="study-privacy-link" href="/study/privacy/">개인정보 처리방침</a><button class="study-settings-button" type="button" aria-label="설정" title="설정" data-study-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div>
   </aside>`;
 }
@@ -921,7 +934,7 @@ app.post('/admin/settings/study-access', async (req, res, next) => {
 
 app.get('/admin/', async (_req, res, next) => {
   try {
-    const [posts, files, journals, readings, serviceStatuses] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list(), readingService.list(), loadServiceStatuses()]);
+    const [posts, files, journals, readings, serviceStatuses, disk] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list(), readingService.list(), loadServiceStatuses(), loadDiskStatus()]);
     const memory = process.memoryUsage();
     const today = todayInSeoul();
     const wroteToday = journals.some((journal) => journal.date === today);
@@ -930,7 +943,10 @@ app.get('/admin/', async (_req, res, next) => {
     const serviceStatusLabels = { running: '실행 중', stopped: '중지', unknown: '확인 불가' };
     const serviceRows = serviceStatuses.map((service) => `<tr><td><strong>${escapeHtml(service.name)}</strong></td><td><span class="service-state is-${service.status}">${serviceStatusLabels[service.status]}</span></td><td>${service.pid ?? '—'}</td><td>${service.cpu === null ? '—' : `${service.cpu.toFixed(1)}%`}</td><td>${service.memory === null ? '—' : formatFileSize(service.memory)}</td><td>${service.uptime === null ? '—' : formatUptime(service.uptime)}</td></tr>`).join('');
     const serviceStatusContent = `<section class="managed-services"><header><div><h2>서비스 상태</h2><p>허용된 애플리케이션 서비스만 표시합니다.</p></div></header><div class="managed-services-table"><table><thead><tr><th>서비스</th><th>상태</th><th>PID</th><th>CPU</th><th>메모리</th><th>가동 시간</th></tr></thead><tbody>${serviceRows}</tbody></table></div></section>`;
-    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 상태</span><dl class="memory-status"><div><dt>Node.js 사용</dt><dd>${formatFileSize(memory.rss)}</dd></div><div><dt>시스템 여유</dt><dd>${formatGigabytes(os.freemem())}</dd></div></dl></section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section><section class="dashboard-card"><span>이번 달 독서</span><strong>${completedThisMonth ? `목표 달성 · ${completedThisMonth}권` : '목표까지 1권'}</strong><a href="/admin/reading/">독서 기록 보기 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
+    const diskContent = disk
+      ? `<dl class="resource-status disk-status"><div><dt>사용 중</dt><dd>${formatGigabytes(disk.used)}</dd></div><div><dt>사용 가능</dt><dd>${formatGigabytes(disk.available)}</dd></div></dl><small>전체 ${formatGigabytes(disk.total)} · ${disk.percent.toFixed(1)}% 사용</small>`
+      : '<strong>확인 불가</strong><small>디스크 정보를 불러오지 못했습니다.</small>';
+    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 상태</span><dl class="memory-status"><div><dt>Node.js 사용</dt><dd>${formatFileSize(memory.rss)}</dd></div><div><dt>시스템 여유</dt><dd>${formatGigabytes(os.freemem())}</dd></div></dl></section><section class="dashboard-card"><span>디스크 상태</span>${diskContent}</section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section><section class="dashboard-card"><span>이번 달 독서</span><strong>${completedThisMonth ? `목표 달성 · ${completedThisMonth}권` : '목표까지 1권'}</strong><a href="/admin/reading/">독서 기록 보기 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
     res.send(adminLayout('대시보드', content.replace('<section class="server-details">', `${serviceStatusContent}<section class="server-details">`), res.locals.adminEmail, 'dashboard'));
   } catch (error) { next(error); }
 });
