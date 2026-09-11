@@ -518,6 +518,10 @@ html[data-admin-theme='dark'] .disk-status > div:last-child dd {
 }
 
 .managed-services > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
     padding: 20px 22px 16px;
     border-bottom: 1px solid var(--line);
 }
@@ -610,6 +614,32 @@ html[data-admin-theme='dark'] .disk-status > div:last-child dd {
 
 html[data-admin-theme='dark'] .service-state.is-running {
     color: #70c98c;
+}
+
+.ai-users-guide,
+.ai-users-privacy {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.ai-users-guide {
+    margin: -10px 0 0;
+}
+
+.ai-users-panel {
+    margin-top: 20px;
+}
+
+.ai-users-empty {
+    padding: 30px 22px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+}
+
+.ai-users-privacy {
+    margin: 12px 0 0;
 }
 
 .server-details {
