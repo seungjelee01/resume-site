@@ -496,6 +496,10 @@ html[data-admin-theme='dark'] .disk-status > div:last-child dd {
     white-space: nowrap;
 }
 
+.disk-status {
+    margin-top: 10px;
+}
+
 .dashboard-card small,
 .dashboard-card a {
     align-self: end;
