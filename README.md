@@ -21,7 +21,7 @@ The public repository contains the application code and UI implementation. Resum
 
 ## Running Locally
 
-Node.js 20 or newer is required.
+Node.js 22.12 or newer is required.
 
 ```bash
 npm install
