@@ -43,7 +43,7 @@ Never enable local administrator access on a public interface.
 
 ## 통합 인증
 
-루트 `/`는 ai-chat의 Google 로그인 포털입니다. `/study`는 Google 세션을 내부 API로 확인하고 `/ai-chat`은 기존 승인 정책을 적용합니다. `/admin`은 Cloudflare Access 인증을 유지하며 추가 Google 로그인 없이 사용자 조회와 AI Chat 이용 승인·중지를 처리합니다.
+루트 `/`는 ai-chat의 Google 로그인 포털입니다. `/study`는 Google 세션을 내부 API로 확인하고 `/ai-chat`은 기존 승인 정책을 적용합니다. `/admin`은 Cloudflare Access 인증을 유지하며 추가 Google 로그인 없이 사용자 조회와 AI Chat 이용 승인·중지를 처리합니다. 관리자 HTTP와 WebSocket 요청은 `Cf-Access-Jwt-Assertion`의 서명, 발급자와 Application Audience를 검증하며 `CF_ACCESS_TEAM_DOMAIN`과 `CF_ACCESS_AUD`가 없거나 올바르지 않으면 접근을 거부합니다.
 
 `RESUME_SHARE_TOKEN`은 `/resume`에 적용하고 `STUDY_SHARE_TOKEN`은 관리자가 Tech Notes를 공유 링크 방식으로 설정할 때 사용합니다. Google 로그인 사용자는 두 설정 모두에서 Tech Notes에 접근할 수 있습니다. 기존 AI Chat 입장 티켓은 접근 권한을 부여하지 않습니다. 두 서비스에 동일한 `INTERNAL_API_SECRET_FILE`을 설정하고 resume에는 `AI_CHAT_INTERNAL_URL=http://127.0.0.1:3100`을 설정하세요. 자세한 절차는 `ai-chat/deploy/UNIFIED_AUTH.md`를 참고하세요.
 

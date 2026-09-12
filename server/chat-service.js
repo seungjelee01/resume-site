@@ -29,7 +29,7 @@ function publicConversation(conversation) {
   };
 }
 
-export function createChatService({ directory, production, allowLocalAdmin, canAccessStudy, notify, limits }) {
+export function createChatService({ directory, production, allowLocalAdmin, verifyAdmin, canAccessStudy, notify, limits }) {
   const clients = new Map();
   const adminListClients = new Set();
   const pendingSessions = new Map();
@@ -204,7 +204,9 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
         let conversation;
         if (isAdmin) {
           const isLocal = ['127.0.0.1', '::1'].includes(request.socket.remoteAddress);
-          if (!request.headers['cf-access-authenticated-user-email'] && !(allowLocalAdmin && isLocal)) return socket.destroy();
+          if (!(allowLocalAdmin && isLocal && !request.headers['cf-access-jwt-assertion'])) {
+            await verifyAdmin(request.headers['cf-access-jwt-assertion']);
+          }
           if (!isAdminList) conversation = await get(url.searchParams.get('conversation'));
         } else {
           if (!(await canAccessStudy(parseCookies(request.headers.cookie)))) return socket.destroy();

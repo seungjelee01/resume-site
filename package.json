@@ -6,12 +6,13 @@
   "type": "module",
   "scripts": {
     "start": "node server/app.js",
-    "check": "node --check server/app.js && node --check server/chat-service.js && node --check server/analytics-service.js && node --check server/journal-service.js && node --check server/reading-service.js && node --check server/quiz-service.js && node --check server/service-status.js && node --check study/assets/study.js && node --check study/assets/quiz.js && node --check server/public/admin-chat.js && node --check server/public/admin-chat-list.js && node --check server/public/admin-ai-chat-users.js && node --check server/unified-auth.js",
+    "check": "node --check server/app.js && node --check server/chat-service.js && node --check server/analytics-service.js && node --check server/journal-service.js && node --check server/reading-service.js && node --check server/quiz-service.js && node --check server/service-status.js && node --check study/assets/study.js && node --check study/assets/quiz.js && node --check server/public/admin-chat.js && node --check server/public/admin-chat-list.js && node --check server/public/admin-ai-chat-users.js && node --check server/unified-auth.js && node --check server/cloudflare-access.js",
     "deploy": "bash ops/deploy.sh"
   },
   "dependencies": {
     "express": "^5.1.0",
     "gray-matter": "^4.0.3",
+    "jose": "^6.2.12",
     "marked": "^16.2.1",
     "multer": "^2.2.0",
     "sanitize-html": "^2.17.0",

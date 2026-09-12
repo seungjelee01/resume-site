@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import { createUnifiedAuth } from './unified-auth.js';
+import { createCloudflareAccess } from './cloudflare-access.js';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -370,6 +371,7 @@ function shareAccess({ token, cookieName, cookiePath, acceptedCookies = [], publ
 
 const requireResumeShare = shareAccess({ token: resumeShareToken, cookieName: 'resume_share', cookiePath: '/resume' });
 const unifiedAuth = createUnifiedAuth();
+const cloudflareAccess = createCloudflareAccess();
 const requireStudyShare = shareAccess({
   token: studyShareToken,
   cookieName: 'study_share',
@@ -387,6 +389,7 @@ const chatService = createChatService({
   directory: chatsDir,
   production: process.env.NODE_ENV === 'production',
   allowLocalAdmin,
+  verifyAdmin: (token) => cloudflareAccess.verify(token),
   canAccessStudy,
   notify: queueDiscordChatNotification,
   limits: {
@@ -820,14 +823,13 @@ app.get('/study/:slug/files/:filename/', async (req, res, next) => {
 });
 
 async function requireAdmin(req, res, next) {
-  const accessEmail = req.get('Cf-Access-Authenticated-User-Email');
   const isLocal = ['127.0.0.1', '::1'].includes(req.ip);
-  if (!accessEmail && !(allowLocalAdmin && isLocal)) return res.status(403).send('Cloudflare Access 인증이 필요합니다.');
   try {
-    res.locals.adminEmail = accessEmail || 'local-development';
+    if (allowLocalAdmin && isLocal && !req.get('Cf-Access-Jwt-Assertion')) res.locals.adminEmail = 'local-development';
+    else res.locals.adminEmail = (await cloudflareAccess.verify(req.get('Cf-Access-Jwt-Assertion'))).email;
     res.locals.siteSettings = await loadSiteSettings();
     next();
-  } catch (error) { next(error); }
+  } catch { res.status(403).send('Cloudflare Access 인증이 필요합니다.'); }
 }
 
 app.get(/^\/admin$/, (_req, res) => res.redirect(302, '/admin/'));
