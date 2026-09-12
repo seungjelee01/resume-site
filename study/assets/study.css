@@ -60,6 +60,12 @@ a {
     padding: 30px 24px;
     color: #fff;
     background: var(--study-sidebar);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.study-sidebar::-webkit-scrollbar {
+    display: none;
 }
 
 .sidebar-header {
@@ -280,6 +286,29 @@ a {
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
+}
+
+.sidebar-tags:not(.is-expanded) a:nth-child(n + 9) {
+    display: none;
+}
+
+.sidebar-tags-toggle {
+    margin-top: 10px;
+    padding: 3px 0;
+    border: 0;
+    color: var(--study-sidebar-muted);
+    background: transparent;
+    font-family: var(--sans);
+    font-size: 9px;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+}
+
+.sidebar-tags-toggle:hover,
+.sidebar-tags-toggle:focus-visible {
+    color: #fff;
 }
 
 .sidebar-tags a {

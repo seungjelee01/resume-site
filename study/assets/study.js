@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     initStudyTheme();
     initStudySidebar();
+    initStudyTagDisclosure();
     initStudyTagFilter();
     initStudyChat();
 });
@@ -98,6 +99,7 @@ function initStudyChat() {
                 const payload = JSON.parse(event.data);
                 if (payload.type === 'ready') {
                     conversationId = payload.id;
+                    status.textContent = `온라인 · ${payload.visitorLabel}`;
                     adminMessages = payload.messages.filter((message) => message.sender === 'admin');
                     if (payload.messages.some((message) => message.sender === 'visitor')) localStorage.setItem('study-chat-has-session', 'true');
                     messages.replaceChildren();
@@ -146,6 +148,25 @@ function initStudyChat() {
         input.value = '';
     });
     if (localStorage.getItem('study-chat-has-session') === 'true') connect();
+}
+
+function initStudyTagDisclosure() {
+    const tags = document.querySelector('[data-sidebar-tags]');
+    const toggle = document.querySelector('[data-sidebar-tags-toggle]');
+    if (!tags || !toggle) return;
+
+    const setExpanded = (expanded) => {
+        tags.classList.toggle('is-expanded', expanded);
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.textContent = expanded ? '태그 접기' : '태그 더보기';
+    };
+
+    const selectedTag = new URLSearchParams(window.location.search).get('tag')?.trim().toLocaleLowerCase('ko-KR');
+    const activeTag = Array.from(tags.querySelectorAll('[data-sidebar-tag]')).find(
+        (link) => (link.dataset.sidebarTag || '').toLocaleLowerCase('ko-KR') === selectedTag,
+    );
+    setExpanded(Boolean(activeTag && Array.from(tags.children).indexOf(activeTag) >= 8));
+    toggle.addEventListener('click', () => setExpanded(toggle.getAttribute('aria-expanded') !== 'true'));
 }
 
 function initStudyTheme() {

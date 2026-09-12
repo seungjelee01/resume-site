@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { createUnifiedAuth } from './unified-auth.js';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -144,6 +144,12 @@ function parsePublicSiteUrl(value) {
 
 app.disable('x-powered-by');
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+app.use((req, res, next) => {
+  if (publicSiteUrl && req.hostname === `www.${new URL(publicSiteUrl).hostname}`) {
+    return res.redirect(308, `${publicSiteUrl}${req.originalUrl}`);
+  }
+  next();
+});
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -341,6 +347,7 @@ function shareAccess({ token, cookieName, cookiePath, acceptedCookies = [], publ
   return async (req, res, next) => {
     try {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      if (res.locals.portalUser) return next();
       if (!token) return next();
 
       const queryToken = typeof req.query.share === 'string' ? req.query.share : '';
@@ -362,6 +369,7 @@ function shareAccess({ token, cookieName, cookiePath, acceptedCookies = [], publ
 }
 
 const requireResumeShare = shareAccess({ token: resumeShareToken, cookieName: 'resume_share', cookiePath: '/resume' });
+const unifiedAuth = createUnifiedAuth();
 const requireStudyShare = shareAccess({
   token: studyShareToken,
   cookieName: 'study_share',
@@ -369,8 +377,8 @@ const requireStudyShare = shareAccess({
   acceptedCookies: [{ name: 'study_from_resume', value: resumeShareToken }],
   publicAccess: async () => (await loadSiteSettings()).studyAccess === 'public',
 });
-
 async function canAccessStudy(cookies) {
+  if (await unifiedAuth.userFromCookies(cookies)) return true;
   if (!studyShareToken || (await loadSiteSettings()).studyAccess === 'public') return true;
   return tokensMatch(cookies.study_share, studyShareToken) || tokensMatch(cookies.study_from_resume, resumeShareToken);
 }
@@ -395,6 +403,8 @@ function trackStudyVisit(req, page) {
 }
 
 app.use('/resume', requireResumeShare);
+app.get(['/study/privacy', '/study/privacy/'], (_req, res) => res.sendStatus(404));
+app.use('/study', unifiedAuth.attachUser);
 app.use('/study', requireStudyShare);
 app.use('/study', (_req, res, next) => { res.setHeader('Cache-Control', 'private, no-store'); next(); });
 app.use('/study/assets', express.static(path.join(rootDir, 'study', 'assets'), { maxAge: '1h' }));
@@ -634,27 +644,24 @@ function formatCommentDate(value) {
   }).format(new Date(value));
 }
 
-function renderComments(post, comments) {
+function chatVisitorLabel(conversation) {
+  return conversation.visitorName || `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`;
+}
+
+function renderComments(post, comments, portalUser) {
+  const authorField = portalUser
+    ? `<label>이름<input value="${escapeHtml(portalUser.name)}" readonly></label><small>Google 프로필 이름으로 공개됩니다.</small>`
+    : '<label>이름<input name="author" required maxlength="30" autocomplete="name"></label>';
   const commentCount = comments.reduce((total, comment) => total + 1 + (Array.isArray(comment.replies) ? comment.replies.length : 0), 0);
   const list = comments.length
     ? `<ol class="study-comment-list">${comments.map((comment) => {
       const replies = Array.isArray(comment.replies) ? comment.replies : [];
       const replyList = replies.length ? `<details class="study-replies" open><summary>답글 ${replies.length}개</summary><ol class="study-reply-list">${replies.map((reply) => `<li><header><strong>${escapeHtml(reply.author)}</strong><time datetime="${escapeHtml(reply.createdAt)}">${escapeHtml(formatCommentDate(reply.createdAt))}</time></header><p>${escapeHtml(reply.content)}</p></li>`).join('')}</ol></details>` : '';
-      const replyForm = `<details class="study-reply-form"><summary>답글 작성</summary><form method="post" action="/study/${encodeURIComponent(post.slug)}/comments/${encodeURIComponent(comment.id)}/replies/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>답글<textarea name="content" required maxlength="1000" rows="3"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">답글 등록</button></form></details>`;
+      const replyForm = `<details class="study-reply-form"><summary>답글 작성</summary><form method="post" action="/study/${encodeURIComponent(post.slug)}/comments/${encodeURIComponent(comment.id)}/replies/">${authorField}<label>답글<textarea name="content" required maxlength="1000" rows="3"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><button type="submit">답글 등록</button></form></details>`;
       return `<li><header><strong>${escapeHtml(comment.author)}</strong><time datetime="${escapeHtml(comment.createdAt)}">${escapeHtml(formatCommentDate(comment.createdAt))}</time></header><p>${escapeHtml(comment.content)}</p>${replyList}${replyForm}</li>`;
     }).join('')}</ol>`
     : '<p class="study-comments-empty">첫 댓글을 남겨 보세요.</p>';
-  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${commentCount}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/"><label>이름<input name="author" required maxlength="30" autocomplete="name"></label><label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><p class="study-comment-privacy">등록한 이름과 댓글은 누구나 볼 수 있습니다. <a href="/study/privacy/">개인정보 처리방침</a></p><button type="submit">댓글 등록</button></form></section>`;
-}
-
-function aiChatEntryUrl() {
-  try {
-    const key = readFileSync(process.env.TECH_NOTES_ENTRY_SECRET_FILE || '/opt/resume/shared/ai-chat-entry.key', 'utf8').trim();
-    if (key.length < 64) return '/ai-chat/';
-    const payload = Buffer.from(JSON.stringify({ kind: 'entry', aud: 'ai-chat', nonce: crypto.randomBytes(24).toString('base64url'), exp: Date.now() + 600_000 })).toString('base64url');
-    const signature = crypto.createHmac('sha256', key).update(payload).digest('base64url');
-    return `/ai-chat/entry?ticket=${payload}.${signature}`;
-  } catch { return '/ai-chat/'; }
+  return `<section class="study-comments" id="comments"><header><h2>댓글 <span>${commentCount}</span></h2><p>글에 대한 의견이나 질문을 남길 수 있습니다.</p></header>${list}<form class="study-comment-form" method="post" action="/study/${encodeURIComponent(post.slug)}/comments/">${authorField}<label>댓글<textarea name="content" required maxlength="1000" rows="5"></textarea></label><label class="study-comment-trap" aria-hidden="true">웹사이트<input name="website" tabindex="-1" autocomplete="off"></label><p class="study-comment-privacy">등록한 이름과 댓글은 누구나 볼 수 있습니다. 로그인한 경우 Google 프로필 이름이 사용됩니다. <a href="/privacy">개인정보 처리방침</a></p><button type="submit">댓글 등록</button></form></section>`;
 }
 
 function studySidebar(posts) {
@@ -680,10 +687,9 @@ function studySidebar(posts) {
       <form class="sidebar-search" action="/study/" role="search" data-study-search-form><label for="study-search">글 검색</label><div><input id="study-search" type="search" name="q" placeholder="제목, 카테고리, 태그" autocomplete="off" data-study-search><button type="submit" aria-label="검색">⌕</button></div></form>
       <section class="sidebar-group"><h2>카테고리</h2><div class="sidebar-categories">${databaseGroup}${standaloneCategories}</div></section>
       <section class="sidebar-group"><h2>월별 기록</h2><div class="sidebar-months">${[...months].map(([month, count]) => `<a href="/study/#month-${month}"><span>${escapeHtml(month)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
-      <section class="sidebar-group"><h2>주제별 태그</h2><div class="sidebar-tags">${tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}" data-sidebar-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div></section>
+      <section class="sidebar-group"><h2>주제별 태그</h2><div class="sidebar-tags" data-sidebar-tags>${tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}" data-sidebar-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>${tags.length > 8 ? '<button class="sidebar-tags-toggle" type="button" aria-expanded="false" data-sidebar-tags-toggle>태그 더보기</button>' : ''}</section>
       <section class="sidebar-group sidebar-resources"><h2>참고 자료</h2><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/index.html" target="_blank" rel="noopener noreferrer"><span>Oracle 19c SQL Reference</span><b aria-hidden="true">↗</b></a></section>
-      <section class="sidebar-group sidebar-resources"><a href="${aiChatEntryUrl()}"><span>AI Chat</span><b aria-hidden="true">→</b></a></section>
-    </nav><div class="study-sidebar-footer"><a class="study-privacy-link" href="/study/privacy/">개인정보 처리방침</a><button class="study-settings-button" type="button" aria-label="설정" title="설정" data-study-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div>
+    </nav><div class="study-sidebar-footer"><a class="study-privacy-link" href="/privacy">개인정보 처리방침</a><button class="study-settings-button" type="button" aria-label="설정" title="설정" data-study-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div>
   </aside>`;
 }
 
@@ -692,20 +698,12 @@ function studyLayout({ title = '', description = '', content, posts, isHome = fa
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
     <title>${pageTitle}</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#ffffff">
-    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260910-1"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260910-1" defer></script></head>
+    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260912-3"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260912-1" defer></script></head>
     <body class="study-page"><a class="skip-link" href="#study-content">본문으로 바로가기</a><header class="mobile-study-header"><button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>☰</button><a href="/study/">Tech Notes</a></header>
-    ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><button class="study-chat-open" type="button" aria-label="Seungje Lee에게 문의하기" aria-expanded="false" aria-controls="study-chat" data-chat-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>문의</span><b data-chat-unread hidden>0</b></button><section class="study-chat" id="study-chat" aria-label="Seungje Lee에게 문의하기" data-chat hidden><header><div><strong>Seungje Lee에게 문의하기</strong><span data-chat-status>연결 준비 중</span></div><button type="button" aria-label="채팅 닫기" data-chat-close>×</button></header><ol aria-live="polite" data-chat-messages></ol><p class="study-chat-privacy">문의 내용은 최근 활동일로부터 90일간 보관됩니다. <a href="/study/privacy/">자세히</a></p><form data-chat-form><label for="chat-message">메시지</label><textarea id="chat-message" maxlength="1000" rows="2" required data-chat-input></textarea><button type="submit">전송</button></form></section><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
+    ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><button class="study-chat-open" type="button" aria-label="Seungje Lee에게 문의하기" aria-expanded="false" aria-controls="study-chat" data-chat-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>문의</span><b data-chat-unread hidden>0</b></button><section class="study-chat" id="study-chat" aria-label="Seungje Lee에게 문의하기" data-chat hidden><header><div><strong>Seungje Lee에게 문의하기</strong><span data-chat-status>연결 준비 중</span></div><button type="button" aria-label="채팅 닫기" data-chat-close>×</button></header><ol aria-live="polite" data-chat-messages></ol><p class="study-chat-privacy">문의 내용은 최근 활동일로부터 90일간 보관됩니다. <a href="/privacy">자세히</a></p><form data-chat-form><label for="chat-message">메시지</label><textarea id="chat-message" maxlength="1000" rows="2" required data-chat-input></textarea><button type="submit">전송</button></form></section><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
 }
 
 app.get('/study/chat/session/', (req, res, next) => chatService.session(req, res).catch(next));
-
-app.get('/study/privacy/', async (_req, res, next) => {
-  try {
-    const posts = await loadPosts();
-    const content = `<article class="study-note study-privacy"><header class="study-note-header"><p class="study-note-date">시행일 2026. 08. 28.</p><h1>개인정보 처리방침</h1><p>Tech Notes는 필요한 범위에서만 정보를 처리하고 안전하게 관리합니다.</p></header><div class="study-note-content"><section><h2>1. 처리하는 정보와 목적</h2><div class="study-table-scroll" role="region" aria-label="개인정보 처리 항목 표" tabindex="0"><table><thead><tr><th>기능</th><th>처리 항목</th><th>목적</th></tr></thead><tbody><tr><td>방문 통계</td><td>방문 일자, 조회 경로, 글 식별자, 국가 코드, IP 주소와 브라우저 정보로 생성한 일별 익명 식별값</td><td>방문자·조회 수 집계와 서비스 개선</td></tr><tr><td>댓글·답글</td><td>작성자명, 내용, 작성 시각</td><td>글에 대한 의견과 질문 제공</td></tr><tr><td>1:1 문의</td><td>문의·답변 내용, 작성 시각, 마스킹된 IP 대역, 임의의 채팅방 식별자와 인증 토큰의 해시</td><td>실시간 문의 응대와 악용 방지</td></tr><tr><td>접근·환경 설정</td><td>공유 링크 및 채팅 세션 쿠키, 테마와 읽음 상태</td><td>접근 권한 유지, 문의 연결, 화면 설정 저장</td></tr></tbody></table></div><p>방문 통계에서는 원본 IP 주소와 브라우저 정보를 저장하지 않습니다. 서버가 요청을 처리할 때 일별 익명 식별값 생성에만 사용하며, 국가는 Cloudflare가 제공하는 국가 코드만 기록합니다.</p></section><section><h2>2. 보유 및 이용 기간</h2><ul><li>방문 통계의 일별 익명 식별값: 31일 후 삭제</li><li>개인을 식별하지 않는 날짜·글·국가별 합계: 서비스 운영 기간 동안 보관</li><li>댓글과 답글: 해당 댓글 또는 글을 삭제할 때까지 공개·보관</li><li>1:1 문의: 마지막 활동일로부터 90일 후 자동 삭제하거나 요청 시 삭제</li><li>공유 링크 및 채팅 세션 쿠키: 브라우저에 최대 30일간 저장</li><li>테마와 읽음 상태: 브라우저 저장 공간에서 직접 삭제할 때까지 저장</li></ul></section><section><h2>3. 공개되는 정보와 외부 서비스</h2><p>댓글과 답글에 입력한 작성자명 및 내용은 Tech Notes 방문자에게 공개됩니다. 비밀번호, 연락처 등 공개를 원하지 않는 정보는 작성하지 마세요.</p><p>서비스 제공과 보호를 위해 Cloudflare의 네트워크·접근 제어 기능을 사용합니다. Discord에는 새 댓글·답글 또는 새 문의가 있다는 일반 알림, 작성 시각과 해당 관리자 목록 링크만 전송합니다. 작성자명, 댓글·문의 내용, IP 주소, 글 제목과 채팅방 식별자는 전송하지 않습니다.</p></section><section><h2>4. 쿠키와 브라우저 저장 공간</h2><p>공유 링크 접근 상태와 채팅 연결을 유지하기 위해 필수 쿠키를 사용합니다. 테마 및 채팅 읽음 상태는 브라우저의 localStorage에 저장됩니다. 브라우저 설정에서 이를 삭제할 수 있으나 공유 페이지 재인증, 테마 초기화 또는 기존 문의 연결 해제가 발생할 수 있습니다.</p></section><section><h2>5. 이용자의 권리</h2><p>자신이 작성한 댓글 또는 문의 정보의 열람·정정·삭제를 요청할 수 있습니다. 화면 오른쪽 아래의 1:1 문의를 통해 요청하면 본인 확인에 필요한 최소한의 절차를 거쳐 처리합니다.</p></section><section><h2>6. 안전성 확보 조치</h2><p>관리자 화면 접근 제어, 전송 구간 암호화, 인증 토큰 해시 저장, IP 주소 마스킹, 저장 파일 권한 제한과 자동 보관 기간 적용 등의 조치를 사용합니다.</p></section><section><h2>7. 개인정보 보호 문의</h2><p>운영자 및 개인정보 보호 담당자는 Seungje Lee입니다. 개인정보 처리와 관련된 문의 및 권리 행사는 화면 오른쪽 아래의 1:1 문의를 이용해 주세요.</p></section><section><h2>8. 처리방침 변경</h2><p>처리 항목이나 기능이 달라지면 이 페이지의 내용과 시행일을 갱신합니다.</p></section></div><footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
-    res.send(studyLayout({ title: '개인정보 처리방침', description: 'Tech Notes 개인정보 처리방침', content, posts }));
-  } catch (error) { next(error); }
-});
 
 app.get('/study/quiz/', async (req, res, next) => {
   try {
@@ -750,7 +748,7 @@ app.get('/study/:slug/', async (req, res, next) => {
     const downloadableFiles = post.attachmentFiles.filter((filename) => !imageExtensions.has(path.extname(filename).toLowerCase()));
     const attachments = downloadableFiles.length ? `<section class="study-attachments"><h2>첨부 파일</h2><ul>${downloadableFiles.map((filename) => { const action = filename.toLowerCase().endsWith('.pdf') ? '다운로드' : '보기'; return `<li><a href="/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/"><code>${escapeHtml(filename)}</code> ${action}</a></li>`; }).join('')}</ul></section>` : '';
     const references = renderStudyReferences(post.references);
-    const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${references}${studyPostNavigation(posts, post)}${renderComments(post, comments)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
+    const content = `<article class="study-note"><header class="study-note-header"><p class="study-note-date"><time datetime="${post.date}">${post.date.replaceAll('-', '. ')}</time></p><a class="study-note-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h1>${escapeHtml(post.title)}</h1><div class="study-note-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></header><div class="study-note-content">${renderMarkdown(post.body)}</div>${attachments}${references}${studyPostNavigation(posts, post)}${renderComments(post, comments, res.locals.portalUser)}<footer class="study-note-footer"><a href="/study/">← 전체 학습 기록</a></footer></article>`;
     res.send(studyLayout({ title: post.title, description: post.body.slice(0, 150), content, posts }));
     trackStudyVisit(req, { slug: post.slug, title: post.title });
   } catch (error) { next(error); }
@@ -762,7 +760,7 @@ app.post('/study/:slug/comments/', requireSameOrigin, async (req, res, next) => 
     const post = (await loadPosts()).find((item) => item.slug === req.params.slug);
     if (!post) return res.status(404).send('Not found');
     if (String(req.body.website || '')) return res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
-    const author = normalizeCommentText(req.body.author, '이름', 30);
+    const author = normalizeCommentText(req.portalUser?.name || req.body.author, '이름', 30);
     const content = normalizeCommentText(req.body.content, '댓글', 1000);
     enforceCommentRateLimit(req);
     const comment = { id: crypto.randomUUID(), author, content, createdAt: new Date().toISOString() };
@@ -782,7 +780,7 @@ app.post('/study/:slug/comments/:commentId/replies/', requireSameOrigin, async (
     const post = (await loadPosts()).find((item) => item.slug === req.params.slug);
     if (!post) return res.status(404).send('Not found');
     if (String(req.body.website || '')) return res.redirect(303, `/study/${encodeURIComponent(post.slug)}/#comments`);
-    const author = normalizeCommentText(req.body.author, '이름', 30);
+    const author = normalizeCommentText(req.portalUser?.name || req.body.author, '이름', 30);
     const content = normalizeCommentText(req.body.content, '답글', 1000);
     enforceCommentRateLimit(req);
     let notification;
@@ -920,7 +918,7 @@ function adminLayout(title, content, email, activeSection = '') {
   const sharedSelected = studyAccess === 'shared' ? ' selected' : '';
   const publicSelected = studyAccess === 'public' ? ' selected' : '';
   const pageTitle = title === '대시보드' ? 'Administration Console · Seungje Lee' : `${escapeHtml(title)} · Administration Console`;
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-2"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260911-3"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-reading.css?v=20260902-2"><script src="/admin/assets/admin-settings.js?v=20260911-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}${navItem('aiUsers', '/admin/ai-chat-users/', 'AI Chat 사용자')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('journal', '/admin/journal/', '일기')}${navItem('reading', '/admin/reading/', '독서')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-notifications"><h3>문의 알림</h3><label><input type="checkbox" data-admin-chat-notifications><span>새 문의를 데스크톱 알림으로 받기</span></label><small data-admin-chat-notification-status>브라우저가 열려 있을 때만 알림을 받을 수 있습니다.</small></section><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>변경 즉시 새 요청부터 적용됩니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260828-2"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260912-3"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-reading.css?v=20260902-2"><script src="/admin/assets/admin-settings.js?v=20260911-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}${navItem('aiUsers', '/admin/ai-chat-users/', '사용자 관리')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('journal', '/admin/journal/', '일기')}${navItem('reading', '/admin/reading/', '독서')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-notifications"><h3>문의 알림</h3><label><input type="checkbox" data-admin-chat-notifications><span>새 문의를 데스크톱 알림으로 받기</span></label><small data-admin-chat-notification-status>브라우저가 열려 있을 때만 알림을 받을 수 있습니다.</small></section><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label><select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label>${studyShareToken ? '<small>Google 로그인 사용자는 두 설정 모두에서 접근할 수 있습니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
 }
 
 app.post('/admin/settings/study-access', async (req, res, next) => {
@@ -929,7 +927,7 @@ app.post('/admin/settings/study-access', async (req, res, next) => {
     if (!['shared', 'public'].includes(studyAccess)) throw new Error('Tech Notes 접근 설정을 확인하세요.');
     if (studyAccess === 'shared' && !studyShareToken) throw new Error('공유 링크 모드에는 STUDY_SHARE_TOKEN이 필요합니다.');
     await saveSiteSettings({ studyAccess });
-    res.redirect('/admin/');
+    res.redirect(303, '/admin/');
   } catch (error) { next(error); }
 });
 
@@ -952,9 +950,27 @@ app.get('/admin/', async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
+app.get('/admin/api/ai-chat/users', async (_req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try { res.json(await unifiedAuth.internal('/internal/admin/users')); }
+  catch { res.status(503).json({ error: '사용자 조회 서비스를 일시적으로 사용할 수 없습니다.' }); }
+});
+
+app.post('/admin/api/ai-chat/users/:id/status', async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const status = String(req.body.status || '');
+  if (!['pending', 'approved', 'blocked'].includes(status)) return res.status(400).json({ error: '올바른 상태를 선택해 주세요.' });
+  try {
+    await unifiedAuth.internal(`/internal/admin/users/${encodeURIComponent(req.params.id)}`, '', {
+      method: 'PATCH', body: { status, actor: res.locals.adminEmail },
+    });
+    res.json({ ok: true });
+  } catch { res.status(503).json({ error: '사용자 상태를 변경하지 못했습니다.' }); }
+});
+
 app.get('/admin/ai-chat-users/', (_req, res) => {
-  const content = `<div class="admin-title"><div><p>AI CHAT ACCESS</p><h1>AI Chat 사용자</h1></div><a class="button" href="${aiChatEntryUrl()}" target="_blank" rel="noopener">AI Chat 인증 열기 ↗</a></div><p class="ai-users-guide">AI Chat의 Google 관리자 계정으로 인증된 경우에만 최소한의 사용자 정보를 조회합니다.</p><section class="managed-services ai-users-panel"><header><div><h2>Google 로그인 사용자</h2><p data-ai-users-status>사용자 정보를 불러오는 중입니다.</p></div><button class="button" type="button" data-ai-users-refresh>새로고침</button></header><div class="managed-services-table" data-ai-users-table hidden><table><thead><tr><th>이름</th><th>이메일</th><th>상태</th><th>역할</th><th>가입 일시</th><th>오늘 요청</th></tr></thead><tbody data-ai-users-body></tbody></table></div><div class="ai-users-empty" data-ai-users-empty hidden></div></section><p class="ai-users-privacy">Google 계정 식별자, 세션·OAuth·CSRF 토큰과 대화 내용은 이 화면에 표시하지 않습니다.</p><script src="/admin/assets/admin-ai-chat-users.js?v=20260911-1" defer></script>`;
-  res.send(adminLayout('AI Chat 사용자', content, res.locals.adminEmail, 'aiUsers'));
+  const content = `<div class="admin-title"><div><p>AI CHAT ACCESS</p><h1>사용자 관리</h1></div></div><p class="ai-users-guide">Google 로그인 사용자의 AI Chat 이용을 승인하거나 중지할 수 있습니다.</p><section class="managed-services ai-users-panel"><header><div><h2>Google 로그인 사용자</h2><p data-ai-users-status>사용자 정보를 불러오는 중입니다.</p></div><button class="button" type="button" data-ai-users-refresh>새로고침</button></header><div class="managed-services-table" data-ai-users-table hidden><table><thead><tr><th>이름</th><th>이메일</th><th>상태</th><th>역할</th><th>가입 일시</th><th>오늘 요청</th><th>관리</th></tr></thead><tbody data-ai-users-body></tbody></table></div><div class="ai-users-empty" data-ai-users-empty hidden></div></section><p class="ai-users-privacy">Google 계정 식별자, 세션·OAuth·CSRF 토큰과 대화 내용은 이 화면에 표시하지 않습니다.</p><script src="/admin/assets/admin-ai-chat-users.js?v=20260912-2" defer></script>`;
+  res.send(adminLayout('사용자 관리', content, res.locals.adminEmail, 'aiUsers'));
 });
 
 app.get('/admin/reading/', async (req, res, next) => {
@@ -1248,7 +1264,7 @@ app.get('/admin/chats/', async (_req, res, next) => {
       const lastMessage = conversation.messages.at(-1);
       const preview = lastMessage ? lastMessage.content.slice(0, 90) : '아직 메시지가 없습니다.';
       const unread = conversation.unread ? `<span class="admin-chat-unread">${conversation.unread}</span>` : '';
-      return `<a class="admin-chat-room${conversation.unread ? ' is-unread' : ''}" href="/admin/chats/${conversation.id}/" data-chat-room="${conversation.id}"><div><strong>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</strong>${unread}<time>${escapeHtml(formatCommentDate(conversation.updatedAt))}</time></div><p>${escapeHtml(preview)}</p><small>${escapeHtml(conversation.ipMasked)}</small></a>`;
+      return `<a class="admin-chat-room${conversation.unread ? ' is-unread' : ''}" href="/admin/chats/${conversation.id}/" data-chat-room="${conversation.id}"><div><strong>${escapeHtml(chatVisitorLabel(conversation))}</strong>${unread}<time>${escapeHtml(formatCommentDate(conversation.updatedAt))}</time></div><p>${escapeHtml(preview)}</p><small>${escapeHtml(conversation.ipMasked)}</small></a>`;
     }).join('');
     const body = rows || '<p class="private-empty">접수된 실시간 문의가 없습니다.</p>';
     const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-2"><div class="admin-title"><div><p>LIVE INQUIRIES</p><h1>실시간 문의</h1></div><span data-chat-room-count>${conversations.length}개</span></div><div class="admin-chat-rooms" data-chat-rooms>${body}</div><script src="/admin/assets/admin-chat-list.js?v=20260828-1" defer></script>`;
@@ -1260,8 +1276,9 @@ app.get('/admin/chats/:id/', async (req, res, next) => {
   try {
     const conversation = await chatService.get(req.params.id);
     if (!conversation) return res.status(404).send('Not found');
-    const messages = conversation.messages.map((message) => `<li class="is-${message.sender}"><span>${message.sender === 'admin' ? '관리자' : `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`}</span><p>${escapeHtml(message.content)}</p><time>${escapeHtml(formatCommentDate(message.createdAt))}</time></li>`).join('');
-    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-2"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>방문자 #${conversation.id.slice(0, 4).toUpperCase()}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="1000" rows="3" required data-admin-chat-input></textarea><button class="button primary" type="submit">전송</button></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20260909-1" defer></script>`;
+    const visitorLabel = chatVisitorLabel(conversation);
+    const messages = conversation.messages.map((message) => `<li class="is-${message.sender}"><span>${message.sender === 'admin' ? '관리자' : escapeHtml(visitorLabel)}</span><p>${escapeHtml(message.content)}</p><time>${escapeHtml(formatCommentDate(message.createdAt))}</time></li>`).join('');
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260828-2"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>${escapeHtml(visitorLabel)}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}" data-visitor-label="${escapeHtml(visitorLabel)}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="1000" rows="3" required data-admin-chat-input></textarea><button class="button primary" type="submit">전송</button></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20260912-1" defer></script>`;
     res.send(adminLayout('실시간 문의', content, res.locals.adminEmail, 'chats'));
   } catch (error) { next(error); }
 });
@@ -1417,4 +1434,4 @@ app.use((error, _req, res, _next) => {
 
 const server = http.createServer(app);
 chatService.attach(server);
-server.listen(port, host, () => console.log(`Resume server listening on http://${host}:${port}`));
+server.listen(port, host, () => console.log(`Resume server listening on http://${host}:${server.address().port}`));

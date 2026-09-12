@@ -6,6 +6,7 @@ const input = document.querySelector('[data-admin-chat-input]');
 
 if (panel && messages && status && form && input) {
   const conversationId = panel.dataset.conversationId;
+  const visitorLabel = panel.dataset.visitorLabel || `방문자 #${conversationId.slice(0, 4).toUpperCase()}`;
   let socket;
   let reconnectTimer;
   const renderMessage = (message) => {
@@ -14,7 +15,7 @@ if (panel && messages && status && form && input) {
     item.dataset.messageId = message.id;
     item.className = `is-${message.sender}`;
     const sender = document.createElement('span');
-    sender.textContent = message.sender === 'admin' ? '관리자' : `방문자 #${conversationId.slice(0, 4).toUpperCase()}`;
+    sender.textContent = message.sender === 'admin' ? '관리자' : visitorLabel;
     const content = document.createElement('p');
     content.textContent = message.content;
     const time = document.createElement('time');

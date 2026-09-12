@@ -26,6 +26,14 @@
     padding: 28px 24px 30px;
     border-right: 1px solid rgba(255, 255, 255, 0.1);
     background: #172531;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.admin-sidebar::-webkit-scrollbar {
+    display: none;
 }
 
 .admin-brand {
@@ -636,6 +644,30 @@ html[data-admin-theme='dark'] .service-state.is-running {
     color: var(--muted);
     font-size: 13px;
     text-align: center;
+}
+
+.ai-user-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font: 11px/1.5 var(--sans);
+}
+
+.ai-user-action {
+    min-height: 30px;
+    padding: 0 9px;
+}
+
+.ai-user-action.is-approved {
+    border-color: var(--accent);
+    color: #fff;
+    background: var(--accent);
+}
+
+.ai-user-action.is-blocked {
+    border-color: var(--danger);
+    color: var(--danger);
 }
 
 .ai-users-privacy {

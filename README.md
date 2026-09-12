@@ -10,7 +10,7 @@ The public repository contains the application code and UI implementation. Resum
 - Light and dark appearance settings
 - Markdown-based Tech Notes with categories, tags, and chronological navigation
 - Protected administration console for writing notes and managing files
-- Runtime Tech Notes access control for public or share-link-only visibility
+- Shared Google sessions for Tech Notes, with internal session validation
 - Per-note visitor comments and one-level replies with administration management
 - Anonymous real-time inquiries with private administrator chat rooms
 - Privacy-friendly first-party Tech Notes visitor analytics
@@ -41,22 +41,15 @@ ALLOW_LOCAL_ADMIN=true npm start
 
 Never enable local administrator access on a public interface.
 
-## Private Share Links
+## 통합 인증
 
-The resume and Tech Notes can be protected independently with long random environment values:
+루트 `/`는 ai-chat의 Google 로그인 포털입니다. `/study`는 Google 세션을 내부 API로 확인하고 `/ai-chat`은 기존 승인 정책을 적용합니다. `/admin`은 Cloudflare Access 인증을 유지하며 추가 Google 로그인 없이 사용자 조회와 AI Chat 이용 승인·중지를 처리합니다.
 
-```dotenv
-RESUME_SHARE_TOKEN=replace-with-a-long-random-value
-STUDY_SHARE_TOKEN=replace-with-another-long-random-value
-```
-
-Successful share-link access creates a secure, HttpOnly browser cookie and redirects to a clean URL. Resume access also grants one-way access to Tech Notes so the resume's Tech Notes link works naturally; a Tech Notes-only link does not grant resume access. Actual tokens must remain in the server environment and must never be committed.
-
-When `STUDY_SHARE_TOKEN` is configured, an administrator can switch Tech Notes between share-link-only and public access from the administration settings dialog. The runtime choice is persisted in `site-settings.json` next to the configured `STUDY_DIR` and survives application releases. Share-link-only mode cannot be enabled without a configured token.
+`RESUME_SHARE_TOKEN`은 `/resume`에 적용하고 `STUDY_SHARE_TOKEN`은 관리자가 Tech Notes를 공유 링크 방식으로 설정할 때 사용합니다. Google 로그인 사용자는 두 설정 모두에서 Tech Notes에 접근할 수 있습니다. 기존 AI Chat 입장 티켓은 접근 권한을 부여하지 않습니다. 두 서비스에 동일한 `INTERNAL_API_SECRET_FILE`을 설정하고 resume에는 `AI_CHAT_INTERNAL_URL=http://127.0.0.1:3100`을 설정하세요. 자세한 절차는 `ai-chat/deploy/UNIFIED_AUTH.md`를 참고하세요.
 
 ## Content Storage
 
-Published Tech Notes are intentionally excluded from this repository. The application reads Markdown content from the directory configured by `STUDY_DIR`; uploaded public attachments, administrator-only files, comments, quizzes, private journal entries, and reading logs use separately configured persistent directories. Quiz questions default to a `quizzes` directory next to `STUDY_DIR` and can be overridden with `QUIZ_DIR`; active questions are public on Tech Notes while editing remains administrator-only. Journal entries and reading logs default to `journal` and `reading`, can be overridden with `JOURNAL_DIR` and `READING_DIR`, and are available only through the authenticated administration console.
+Published Tech Notes are intentionally excluded from this repository. The application reads Markdown content from the directory configured by `STUDY_DIR`; uploaded public attachments, administrator-only files, comments, quizzes, private journal entries, and reading logs use separately configured persistent directories. Quiz questions default to a `quizzes` directory next to `STUDY_DIR` and can be overridden with `QUIZ_DIR`; active questions are available to signed-in Tech Notes visitors while editing remains administrator-only. Journal entries and reading logs default to `journal` and `reading`, can be overridden with `JOURNAL_DIR` and `READING_DIR`, and are available only through the authenticated administration console.
 
 For local testing, create Markdown files under `_study/` using `_templates/study-note.md`. Files in `_study/` are ignored by Git so personal notes cannot be committed accidentally.
 

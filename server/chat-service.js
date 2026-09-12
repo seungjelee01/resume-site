@@ -4,6 +4,7 @@ import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 
 const idPattern = /^[0-9a-f-]{36}$/i;
+const visitorLabel = (conversation) => conversation.visitorName || `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`;
 
 function parseCookies(header = '') {
   return Object.fromEntries(header.split(';').map((part) => part.trim().split('=').map(decodeURIComponent)).filter(([key, value]) => key && value));
@@ -23,7 +24,7 @@ function safeEqual(left, right) {
 function publicConversation(conversation) {
   return {
     id: conversation.id,
-    visitorLabel: `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`,
+    visitorLabel: visitorLabel(conversation),
     messages: conversation.messages,
   };
 }
@@ -88,7 +89,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
   };
   const roomSummary = (conversation) => ({
     id: conversation.id,
-    visitorLabel: `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`,
+    visitorLabel: visitorLabel(conversation),
     preview: conversation.messages.at(-1)?.content || '아직 메시지가 없습니다.',
     lastSender: conversation.messages.at(-1)?.sender || '',
     updatedAt: conversation.updatedAt,
@@ -124,6 +125,11 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
   async function session(req, res) {
     await cleanupExpired();
     let conversation = await authenticate(req.get('Cookie'));
+    if (conversation && req.portalUser?.name && conversation.visitorName !== req.portalUser.name) {
+      conversation.visitorName = req.portalUser.name;
+      if (pendingSessions.has(conversation.id)) pendingSessions.set(conversation.id, conversation);
+      else await save(conversation);
+    }
     if (!conversation) {
       const address = production ? req.get('Cf-Connecting-Ip') || req.ip : req.ip;
       const nowTime = Date.now();
@@ -145,6 +151,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
       const now = new Date().toISOString();
       conversation = {
         id,
+        ...(req.portalUser?.name ? { visitorName: req.portalUser.name } : {}),
         tokenHash: tokenHash(token),
         ipMasked: maskIp(address),
         createdAt: now,
@@ -204,10 +211,10 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
           conversation = await authenticate(request.headers.cookie);
         }
         if (!isAdminList && !conversation) return socket.destroy();
-        webSocketServer.handleUpgrade(request, socket, head, (webSocket) => webSocketServer.emit('connection', webSocket, { conversation, isAdmin, isAdminList }));
+        webSocketServer.handleUpgrade(request, socket, head, (webSocket) => webSocketServer.emit('connection', webSocket, { conversation, isAdmin, isAdminList, cookies: parseCookies(request.headers.cookie) }));
       } catch { socket.destroy(); }
     });
-    webSocketServer.on('connection', async (socket, { conversation, isAdmin, isAdminList }) => {
+    webSocketServer.on('connection', async (socket, { conversation, isAdmin, isAdminList, cookies }) => {
       if (isAdminList) {
         adminListClients.add(socket);
         socket.send(JSON.stringify({ type: 'rooms', rooms: (await list()).map(roomSummary) }));
@@ -228,6 +235,7 @@ export function createChatService({ directory, production, allowLocalAdmin, canA
         try {
           const input = JSON.parse(data.toString());
           if (input.type !== 'message') return;
+          if (!isAdmin && !(await canAccessStudy(cookies))) return socket.close(1008, 'login required');
           enforceRate(`${id}:${isAdmin ? 'admin' : 'visitor'}`);
           const message = { id: crypto.randomUUID(), sender: isAdmin ? 'admin' : 'visitor', content: normalize(input.content), createdAt: new Date().toISOString() };
           const saved = await update(id, async () => {

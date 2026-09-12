@@ -31,7 +31,7 @@
         {% if study_tags.size > 0 %}
         <section class="sidebar-group" aria-labelledby="sidebar-tags-title">
             <h2 id="sidebar-tags-title">주제별 태그</h2>
-            <div class="sidebar-tags">
+            <div class="sidebar-tags" data-sidebar-tags>
                 {% for tag in study_tags %}
                     {% assign normalized_tag = tag | strip %}
                     {% unless normalized_tag == "" %}
@@ -39,8 +39,8 @@
                     {% endunless %}
                 {% endfor %}
             </div>
+            {% if study_tags.size > 8 %}<button class="sidebar-tags-toggle" type="button" aria-expanded="false" data-sidebar-tags-toggle>태그 더보기</button>{% endif %}
         </section>
         {% endif %}
-        <section class="sidebar-group sidebar-resources"><a href="https://seungjelee.com/study/"><span>AI Chat · 운영 Tech Notes에서 입장</span><b aria-hidden="true">→</b></a></section>
     </nav>
 </aside>

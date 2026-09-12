@@ -20,16 +20,52 @@ function cell(text) {
   return element;
 }
 
+function actionCell(user) {
+  const element = document.createElement('td');
+  const actions = document.createElement('div');
+  actions.className = 'ai-user-actions';
+  if (user.role === 'admin') {
+    actions.textContent = '환경설정에서 관리';
+    element.append(actions);
+    return element;
+  }
+  for (const [status, label] of [['approved', '승인'], ['pending', '대기'], ['blocked', '중지']]) {
+    if (user.status === status) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `button ai-user-action is-${status}`;
+    button.textContent = label;
+    button.addEventListener('click', async () => {
+      if (status === 'blocked' && !window.confirm(`${user.name || user.email} 사용자의 AI Chat 이용을 중지할까요?`)) return;
+      actions.querySelectorAll('button').forEach((item) => { item.disabled = true; });
+      statusElement.textContent = `${user.name || user.email} 사용자의 상태를 변경하는 중입니다.`;
+      try {
+        const response = await fetch(`/admin/api/ai-chat/users/${encodeURIComponent(user.id)}/status`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+          body: new URLSearchParams({ status }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || '사용자 상태를 변경하지 못했습니다.');
+        await loadUsers();
+      } catch (error) {
+        showMessage(error instanceof Error ? error.message : '사용자 상태를 변경하지 못했습니다.');
+      }
+    });
+    actions.append(button);
+  }
+  element.append(actions);
+  return element;
+}
+
 async function loadUsers() {
   refreshButton.disabled = true;
   statusElement.textContent = '사용자 정보를 불러오는 중입니다.';
   emptyElement.hidden = true;
   try {
-    const response = await fetch('/ai-chat/api/admin/users', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    const response = await fetch('/admin/api/ai-chat/users', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
     if (!response.ok) {
-      if (response.status === 404) return showMessage('AI Chat 입장 인증이 필요합니다. 인증을 연 뒤 다시 시도해 주세요.');
-      if (response.status === 401) return showMessage('AI Chat에서 Google 로그인이 필요합니다.');
-      if (response.status === 403) return showMessage('승인된 AI Chat 관리자 계정으로 로그인해야 합니다.');
+      if (response.status === 403) return showMessage('Cloudflare Access 인증이 필요합니다.');
       throw new Error('사용자 정보를 불러오지 못했습니다.');
     }
     const data = await response.json();
@@ -44,6 +80,7 @@ async function loadUsers() {
         cell(roleLabels[user.role] || '확인 불가'),
         cell(Number.isFinite(user.created_at) ? new Date(user.created_at).toLocaleString('ko-KR') : '—'),
         cell(`${Number.isSafeInteger(user.requests_today) ? user.requests_today : 0}회`),
+        actionCell(user),
       );
       bodyElement.append(row);
     }
