@@ -145,6 +145,18 @@ function parsePublicSiteUrl(value) {
 
 app.disable('x-powered-by');
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+const studyContentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'none'",
+  "connect-src 'self'",
+  "font-src https://fonts.gstatic.com",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "img-src 'self' data: https:",
+  "object-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+].join('; ');
 app.use((req, res, next) => {
   if (publicSiteUrl && req.hostname === `www.${new URL(publicSiteUrl).hostname}`) {
     return res.redirect(308, `${publicSiteUrl}${req.originalUrl}`);
@@ -155,6 +167,9 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'DENY');
+  if (req.path === '/study' || req.path.startsWith('/study/')) {
+    res.setHeader('Content-Security-Policy', studyContentSecurityPolicy);
+  }
   next();
 });
 
