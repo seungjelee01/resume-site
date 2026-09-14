@@ -985,8 +985,18 @@ app.post('/admin/api/ai-chat/users/:id/status', async (req, res) => {
   } catch { res.status(503).json({ error: '사용자 상태를 변경하지 못했습니다.' }); }
 });
 
+app.post('/admin/api/ai-chat/users/:id/delete', async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try {
+    await unifiedAuth.internal(`/internal/admin/users/${encodeURIComponent(req.params.id)}`, '', {
+      method: 'DELETE', body: { actor: res.locals.adminEmail },
+    });
+    res.json({ ok: true });
+  } catch { res.status(503).json({ error: '사용자를 삭제하지 못했습니다.' }); }
+});
+
 app.get('/admin/ai-chat-users/', (_req, res) => {
-  const content = `<div class="admin-title"><div><p>AI CHAT ACCESS</p><h1>사용자 관리</h1></div></div><p class="ai-users-guide">Google 로그인 사용자의 AI Chat 이용을 승인하거나 중지할 수 있습니다.</p><section class="managed-services ai-users-panel"><header><div><h2>Google 로그인 사용자</h2><p data-ai-users-status>사용자 정보를 불러오는 중입니다.</p></div><button class="button" type="button" data-ai-users-refresh>새로고침</button></header><div class="managed-services-table" data-ai-users-table hidden><table><thead><tr><th>이름</th><th>이메일</th><th>상태</th><th>역할</th><th>가입 일시</th><th>오늘 요청</th><th>관리</th></tr></thead><tbody data-ai-users-body></tbody></table></div><div class="ai-users-empty" data-ai-users-empty hidden></div></section><p class="ai-users-privacy">Google 계정 식별자, 세션·OAuth·CSRF 토큰과 대화 내용은 이 화면에 표시하지 않습니다.</p><script src="/admin/assets/admin-ai-chat-users.js?v=20260912-2" defer></script>`;
+  const content = `<div class="admin-title"><div><p>AI CHAT ACCESS</p><h1>사용자 관리</h1></div></div><p class="ai-users-guide">Google 로그인 사용자의 AI Chat 이용을 승인·중지하거나 계정 데이터를 삭제할 수 있습니다.</p><section class="managed-services ai-users-panel"><header><div><h2>Google 로그인 사용자</h2><p data-ai-users-status>사용자 정보를 불러오는 중입니다.</p></div><button class="button" type="button" data-ai-users-refresh>새로고침</button></header><div class="managed-services-table" data-ai-users-table hidden><table><thead><tr><th>이름</th><th>이메일</th><th>상태</th><th>역할</th><th>가입 일시</th><th>오늘 요청</th><th>관리</th></tr></thead><tbody data-ai-users-body></tbody></table></div><div class="ai-users-empty" data-ai-users-empty hidden></div></section><p class="ai-users-privacy">Google 계정 식별자, 세션·OAuth·CSRF 토큰과 대화 내용은 이 화면에 표시하지 않습니다.</p><script src="/admin/assets/admin-ai-chat-users.js?v=20260914-1" defer></script>`;
   res.send(adminLayout('사용자 관리', content, res.locals.adminEmail, 'aiUsers'));
 });
 

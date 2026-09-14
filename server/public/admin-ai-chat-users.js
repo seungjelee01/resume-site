@@ -54,6 +54,27 @@ function actionCell(user) {
     });
     actions.append(button);
   }
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'button ai-user-action is-delete';
+  deleteButton.textContent = '삭제';
+  deleteButton.addEventListener('click', async () => {
+    const label = user.name || user.email;
+    if (!window.confirm(`${label} 사용자를 삭제할까요?\n\n로그인 세션, 대화, 메시지와 사용량 기록이 모두 삭제되며 복구할 수 없습니다. 다시 로그인하면 승인 대기 사용자로 등록됩니다.`)) return;
+    actions.querySelectorAll('button').forEach((item) => { item.disabled = true; });
+    statusElement.textContent = `${label} 사용자를 삭제하는 중입니다.`;
+    try {
+      const response = await fetch(`/admin/api/ai-chat/users/${encodeURIComponent(user.id)}/delete`, {
+        method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json' },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || '사용자를 삭제하지 못했습니다.');
+      await loadUsers();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : '사용자를 삭제하지 못했습니다.');
+    }
+  });
+  actions.append(deleteButton);
   element.append(actions);
   return element;
 }

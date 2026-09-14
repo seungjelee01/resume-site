@@ -670,6 +670,12 @@ html[data-admin-theme='dark'] .service-state.is-running {
     color: var(--danger);
 }
 
+.ai-user-action.is-delete {
+    border-color: var(--danger);
+    color: #fff;
+    background: var(--danger);
+}
+
 .ai-users-privacy {
     margin: 12px 0 0;
 }
