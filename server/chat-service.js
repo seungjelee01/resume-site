@@ -238,6 +238,22 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
       socket.on('message', async (data) => {
         try {
           const input = JSON.parse(data.toString());
+          if (input.type === 'delete-message') {
+            if (!isAdmin || !idPattern.test(String(input.messageId || ''))) throw new Error('삭제할 수 없는 메시지입니다.');
+            const saved = await update(id, async () => {
+              const current = await loadAvailable(id);
+              if (!current) throw new Error('문의 세션을 찾을 수 없습니다.');
+              const index = current.messages.findIndex((message) => message.id === input.messageId && message.sender === 'admin');
+              if (index < 0) throw new Error('삭제할 수 없는 메시지입니다.');
+              current.messages.splice(index, 1);
+              current.updatedAt = current.messages.at(-1)?.createdAt || current.createdAt;
+              await save(current);
+              return current;
+            });
+            broadcast(id, { type: 'message-deleted', messageId: input.messageId });
+            broadcastRoom(saved);
+            return;
+          }
           if (input.type !== 'message') return;
           if (!isAdmin && !(await canAccessStudy(cookies))) return socket.close(1008, 'login required');
           enforceRate(`${id}:${isAdmin ? 'admin' : 'visitor'}`);

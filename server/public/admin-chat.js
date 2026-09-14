@@ -21,6 +21,15 @@ if (panel && messages && status && form && input) {
     const time = document.createElement('time');
     time.textContent = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt));
     item.append(sender, content, time);
+    if (message.sender === 'admin') {
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'admin-chat-message-delete';
+      deleteButton.dataset.deleteMessage = message.id;
+      deleteButton.textContent = '삭제';
+      deleteButton.setAttribute('aria-label', '이 관리자 메시지 삭제');
+      item.append(deleteButton);
+    }
     messages.append(item);
     messages.scrollTop = messages.scrollHeight;
   };
@@ -34,6 +43,7 @@ if (panel && messages && status && form && input) {
         messages.replaceChildren();
         payload.messages.forEach(renderMessage);
       } else if (payload.type === 'message') renderMessage(payload.message);
+      else if (payload.type === 'message-deleted') messages.querySelector(`[data-message-id="${CSS.escape(payload.messageId)}"]`)?.remove();
       else if (payload.type === 'error') status.textContent = payload.message;
     });
     socket.addEventListener('close', () => { status.textContent = '연결이 끊겨 재연결 중입니다.'; reconnectTimer = setTimeout(connect, 2000); });
@@ -49,6 +59,12 @@ if (panel && messages && status && form && input) {
     if (!content || socket?.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ type: 'message', content }));
     input.value = '';
+  });
+  messages.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-delete-message]');
+    if (!button || socket?.readyState !== WebSocket.OPEN || !window.confirm('이 답변을 삭제할까요?')) return;
+    button.disabled = true;
+    socket.send(JSON.stringify({ type: 'delete-message', messageId: button.dataset.deleteMessage }));
   });
   window.addEventListener('beforeunload', () => clearTimeout(reconnectTimer));
   connect();

@@ -18,6 +18,9 @@
 .admin-chat-panel li p { margin: 4px 0; padding: 10px 12px; border-radius: 9px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); }
 .admin-chat-panel li.is-admin p { color: #fff; background: var(--accent); }
 .admin-chat-panel li.is-admin time { text-align: right; }
+.admin-chat-message-delete { display: block; margin: 3px 0 0 auto; padding: 2px 0; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
+.admin-chat-message-delete:hover { color: #b44a4a; text-decoration: underline; }
+.admin-chat-message-delete:disabled { cursor: wait; opacity: .5; }
 .admin-chat-panel form { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px; border-top: 1px solid var(--line); }
 .admin-chat-panel form label { position: absolute; left: -10000px; }
 .admin-chat-panel form textarea { min-height: 62px; }

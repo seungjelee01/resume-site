@@ -114,6 +114,10 @@ function initStudyChat() {
                         else markRead();
                         notifyAdminReply(payload.message);
                     }
+                } else if (payload.type === 'message-deleted') {
+                    messages.querySelector(`[data-message-id="${CSS.escape(payload.messageId)}"]`)?.remove();
+                    adminMessages = adminMessages.filter((message) => message.id !== payload.messageId);
+                    updateUnread();
                 }
                 else if (payload.type === 'error') status.textContent = payload.message;
             });
