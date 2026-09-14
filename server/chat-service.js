@@ -4,6 +4,8 @@ import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 
 const idPattern = /^[0-9a-f-]{36}$/i;
+const visitorMessageMaxLength = 1000;
+const adminMessageMaxLength = 5000;
 const visitorLabel = (conversation) => conversation.visitorName || `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`;
 
 function parseCookies(header = '') {
@@ -77,9 +79,9 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     recent.push(now);
     rateLimits.set(key, recent);
   };
-  const normalize = (value) => {
+  const normalize = (value, maxLength) => {
     const content = String(value || '').trim();
-    if (!content || content.length > 1000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(content)) throw new Error('메시지는 1~1000자로 입력하세요.');
+    if (!content || content.length > maxLength || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(content)) throw new Error(`메시지는 1~${maxLength.toLocaleString('ko-KR')}자로 입력하세요.`);
     return content;
   };
   const broadcast = (id, payload) => {
@@ -191,7 +193,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
   }
 
   function attach(server) {
-    const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 4096 });
+    const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 32 * 1024 });
     server.on('upgrade', async (request, socket, head) => {
       try {
         const url = new URL(request.url, `http://${request.headers.host}`);
@@ -239,7 +241,8 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
           if (input.type !== 'message') return;
           if (!isAdmin && !(await canAccessStudy(cookies))) return socket.close(1008, 'login required');
           enforceRate(`${id}:${isAdmin ? 'admin' : 'visitor'}`);
-          const message = { id: crypto.randomUUID(), sender: isAdmin ? 'admin' : 'visitor', content: normalize(input.content), createdAt: new Date().toISOString() };
+          const maxLength = isAdmin ? adminMessageMaxLength : visitorMessageMaxLength;
+          const message = { id: crypto.randomUUID(), sender: isAdmin ? 'admin' : 'visitor', content: normalize(input.content, maxLength), createdAt: new Date().toISOString() };
           const saved = await update(id, async () => {
             const current = await loadAvailable(id);
             if (!current) throw new Error('문의 세션이 만료되었습니다. 채팅창을 다시 열어 주세요.');
