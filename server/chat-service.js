@@ -6,6 +6,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 const idPattern = /^[0-9a-f-]{36}$/i;
 const visitorMessageMaxLength = 1000;
 const adminMessageMaxLength = 5000;
+const adminTextFileMaxSize = 2 * 1024 * 1024;
+const textFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.txt$/iu;
 const visitorLabel = (conversation) => conversation.visitorName || `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`;
 
 function parseCookies(header = '') {
@@ -41,6 +43,8 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
   let lastRetentionCleanup = 0;
 
   const filePath = (id) => path.join(directory, `${id}.json`);
+  const attachmentDirectory = (id) => path.join(directory, `${id}.files`);
+  const attachmentPath = (id, messageId) => path.join(attachmentDirectory(id), `${messageId}.txt`);
   const load = async (id) => JSON.parse(await fs.readFile(filePath(id), 'utf8'));
   const save = async (conversation) => {
     await fs.mkdir(directory, { recursive: true });
@@ -118,6 +122,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
         for (const socket of clients.get(id) || []) socket.close(1008, 'conversation expired');
         clients.delete(id);
         await fs.rm(filePath(id));
+        await fs.rm(attachmentDirectory(id), { recursive: true, force: true });
         const payload = JSON.stringify({ type: 'room-deleted', id });
         for (const socket of adminListClients) if (socket.readyState === WebSocket.OPEN) socket.send(payload);
       } catch (error) { if (error.code !== 'ENOENT') console.error('Chat retention cleanup failed:', error.message); }
@@ -186,10 +191,68 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     clients.delete(id);
     try {
       await fs.rm(filePath(id));
+      await fs.rm(attachmentDirectory(id), { recursive: true, force: true });
       const payload = JSON.stringify({ type: 'room-deleted', id });
       for (const socket of adminListClients) if (socket.readyState === WebSocket.OPEN) socket.send(payload);
       return true;
     } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  }
+
+  async function sendAdminFile(id, file) {
+    if (!idPattern.test(id)) return null;
+    const name = String(file?.originalname || '').normalize('NFC');
+    const buffer = file?.buffer;
+    if (!textFileNamePattern.test(name) || !Buffer.isBuffer(buffer) || !buffer.length || buffer.length > adminTextFileMaxSize) {
+      throw new Error('2MB 이하의 .txt 파일만 전송할 수 있습니다.');
+    }
+    let text;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); } catch { throw new Error('UTF-8로 저장된 텍스트 파일만 전송할 수 있습니다.'); }
+    if (/\u0000|[\u0001-\u0008\u000b\u000c\u000e-\u001f]/.test(text)) throw new Error('텍스트 파일 내용을 확인해 주세요.');
+    enforceRate(`${id}:admin`);
+    const message = {
+      id: crypto.randomUUID(),
+      sender: 'admin',
+      content: `파일: ${name}`,
+      attachment: { name, size: buffer.length },
+      createdAt: new Date().toISOString(),
+    };
+    const saved = await update(id, async () => {
+      const current = await load(id);
+      if (current.messages.length >= limits.maxMessages) throw new Error(`한 문의에서는 메시지를 ${limits.maxMessages}개까지 보낼 수 있습니다.`);
+      await fs.mkdir(attachmentDirectory(id), { recursive: true, mode: 0o700 });
+      await fs.chmod(attachmentDirectory(id), 0o700);
+      const target = attachmentPath(id, message.id);
+      try {
+        await fs.writeFile(target, buffer, { mode: 0o640, flag: 'wx' });
+        current.messages.push(message);
+        current.updatedAt = message.createdAt;
+        await save(current);
+      } catch (error) {
+        await fs.rm(target, { force: true });
+        throw error;
+      }
+      return current;
+    });
+    broadcast(id, { type: 'message', message });
+    broadcastRoom(saved);
+    return message;
+  }
+
+  async function getAttachment(id, messageId) {
+    if (![id, messageId].every((value) => idPattern.test(String(value || '')))) return null;
+    try {
+      const conversation = await load(id);
+      const message = conversation.messages.find((item) => item.id === messageId && item.sender === 'admin' && item.attachment);
+      if (!message) return null;
+      await fs.access(attachmentPath(id, messageId));
+      return { path: attachmentPath(id, messageId), name: message.attachment.name };
+    } catch { return null; }
+  }
+
+  async function getVisitorAttachment(cookieHeader, id, messageId) {
+    const conversation = await authenticate(cookieHeader);
+    if (!conversation || conversation.id !== id) return null;
+    return getAttachment(id, messageId);
   }
 
   function attach(server) {
@@ -245,9 +308,10 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
               if (!current) throw new Error('문의 세션을 찾을 수 없습니다.');
               const index = current.messages.findIndex((message) => message.id === input.messageId && message.sender === 'admin');
               if (index < 0) throw new Error('삭제할 수 없는 메시지입니다.');
-              current.messages.splice(index, 1);
+              const [removed] = current.messages.splice(index, 1);
               current.updatedAt = current.messages.at(-1)?.createdAt || current.createdAt;
               await save(current);
+              if (removed.attachment) await fs.rm(attachmentPath(id, removed.id), { force: true });
               return current;
             });
             broadcast(id, { type: 'message-deleted', messageId: input.messageId });
@@ -280,5 +344,5 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     });
   }
 
-  return { attach, get, list, remove, session };
+  return { attach, get, getAttachment, getVisitorAttachment, list, remove, sendAdminFile, session };
 }

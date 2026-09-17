@@ -1019,6 +1019,10 @@ a {
 .study-chat-avatar { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 50%; color: #fff; background: var(--study-accent); font: 700 9px/1 'Noto Sans KR', sans-serif; letter-spacing: .02em; }
 .study-chat li p { margin: 0; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--study-surface); }
 .study-chat li.is-visitor p { color: #fff; background: var(--study-accent); }
+.study-chat-file { display: grid; gap: 3px; margin: 0; padding: 10px 12px; border: 1px solid var(--study-border); border-radius: 10px; color: var(--study-text); background: var(--study-surface); text-decoration: none; }
+.study-chat-file:hover { border-color: var(--study-accent); }
+.study-chat-file strong { overflow-wrap: anywhere; }
+.study-chat-file small { color: var(--study-muted); font-size: 10px; }
 .study-chat li time { display: block; margin-top: 3px; color: var(--study-muted); font-size: 10px; text-align: right; }
 .study-chat-privacy { margin: 0; padding: 8px 12px; border-top: 1px solid var(--study-border); color: var(--study-muted); background: var(--study-surface); font-size: 11px; line-height: 1.5; }
 .study-chat form { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; border-top: 1px solid var(--study-border); background: var(--study-surface); }

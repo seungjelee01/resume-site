@@ -113,6 +113,11 @@ const privateFileUpload = multer({
   limits: { fileSize: 15 * 1024 * 1024, files: 5 },
   fileFilter: uploadFileFilter(privateFileNamePattern, '지원하는 Python, SQL, TXT, PDF 또는 이미지 파일만 업로드할 수 있습니다.'),
 });
+const chatTextFileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  fileFilter: uploadFileFilter(/^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.txt$/iu, '2MB 이하의 .txt 파일만 전송할 수 있습니다.'),
+});
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -716,12 +721,21 @@ function studyLayout({ title = '', description = '', content, posts, isHome = fa
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
     <title>${pageTitle}</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#ffffff">
-    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260912-3"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260914-1" defer></script></head>
+    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260917-1"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260917-1" defer></script></head>
     <body class="study-page"><a class="skip-link" href="#study-content">본문으로 바로가기</a><header class="mobile-study-header"><button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>☰</button><a href="/study/">Tech Notes</a></header>
     ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><button class="study-chat-open" type="button" aria-label="Seungje Lee에게 문의하기" aria-expanded="false" aria-controls="study-chat" data-chat-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>문의</span><b data-chat-unread hidden>0</b></button><section class="study-chat" id="study-chat" aria-label="Seungje Lee에게 문의하기" data-chat hidden><header><div><strong>Seungje Lee에게 문의하기</strong><span data-chat-status>연결 준비 중</span></div><button type="button" aria-label="채팅 닫기" data-chat-close>×</button></header><ol aria-live="polite" data-chat-messages></ol><p class="study-chat-privacy">문의 내용은 최근 활동일로부터 90일간 보관됩니다. <a href="/privacy">자세히</a></p><form data-chat-form><label for="chat-message">메시지</label><textarea id="chat-message" maxlength="1000" rows="2" required data-chat-input></textarea><button type="submit">전송</button></form></section><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
 }
 
 app.get('/study/chat/session/', (req, res, next) => chatService.session(req, res).catch(next));
+
+app.get('/study/chat/files/:conversationId/:messageId/', async (req, res, next) => {
+  try {
+    const file = await chatService.getVisitorAttachment(req.get('Cookie'), req.params.conversationId, req.params.messageId);
+    if (!file) return res.status(404).send('Not found');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.download(file.path, file.name);
+  } catch (error) { next(error); }
+});
 
 app.get('/study/quiz/', async (req, res, next) => {
   try {
@@ -1304,9 +1318,34 @@ app.get('/admin/chats/:id/', async (req, res, next) => {
     const conversation = await chatService.get(req.params.id);
     if (!conversation) return res.status(404).send('Not found');
     const visitorLabel = chatVisitorLabel(conversation);
-    const messages = conversation.messages.map((message) => `<li class="is-${message.sender}" data-message-id="${message.id}"><span>${message.sender === 'admin' ? '관리자' : escapeHtml(visitorLabel)}</span><p>${escapeHtml(message.content)}</p><time>${escapeHtml(formatCommentDate(message.createdAt))}</time>${message.sender === 'admin' ? `<button class="admin-chat-message-delete" type="button" data-delete-message="${message.id}" aria-label="이 관리자 메시지 삭제">삭제</button>` : ''}</li>`).join('');
-    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260914-1"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>${escapeHtml(visitorLabel)}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}" data-visitor-label="${escapeHtml(visitorLabel)}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="5000" rows="3" required data-admin-chat-input></textarea><button class="button primary" type="submit">전송</button></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20260914-1" defer></script>`;
+    const messages = conversation.messages.map((message) => {
+      const body = message.attachment
+        ? `<a class="admin-chat-file" href="/admin/chats/${conversation.id}/files/${message.id}/"><strong>${escapeHtml(message.attachment.name)}</strong><small>${formatFileSize(message.attachment.size)}</small></a>`
+        : `<p>${escapeHtml(message.content)}</p>`;
+      return `<li class="is-${message.sender}" data-message-id="${message.id}"><span>${message.sender === 'admin' ? '관리자' : escapeHtml(visitorLabel)}</span>${body}<time>${escapeHtml(formatCommentDate(message.createdAt))}</time>${message.sender === 'admin' ? `<button class="admin-chat-message-delete" type="button" data-delete-message="${message.id}" aria-label="이 관리자 메시지 삭제">삭제</button>` : ''}</li>`;
+    }).join('');
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260917-1"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>${escapeHtml(visitorLabel)}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}" data-visitor-label="${escapeHtml(visitorLabel)}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="5000" rows="3" data-admin-chat-input></textarea><div class="admin-chat-actions"><label class="button admin-chat-file-button" for="admin-chat-file">TXT 첨부<input id="admin-chat-file" type="file" accept=".txt,text/plain" data-admin-chat-file></label><button class="button primary" type="submit">전송</button></div></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20260917-1" defer></script>`;
     res.send(adminLayout('실시간 문의', content, res.locals.adminEmail, 'chats'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/chats/:id/files', (req, res, next) => {
+  chatTextFileUpload.single('file')(req, res, (error) => error ? res.status(400).json({ error: error.message }) : next());
+}, async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '.txt 파일을 선택해 주세요.' });
+    if (!await chatService.get(req.params.id)) return res.status(404).json({ error: '문의 세션을 찾을 수 없습니다.' });
+    const message = await chatService.sendAdminFile(req.params.id, req.file);
+    res.status(201).json({ message });
+  } catch (error) { res.status(400).json({ error: error.message }); }
+});
+
+app.get('/admin/chats/:id/files/:messageId/', async (req, res, next) => {
+  try {
+    const file = await chatService.getAttachment(req.params.id, req.params.messageId);
+    if (!file) return res.status(404).send('Not found');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.download(file.path, file.name);
   } catch (error) { next(error); }
 });
 

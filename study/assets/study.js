@@ -76,8 +76,16 @@ function initStudyChat() {
             sender.append(profile, name);
             item.append(sender);
         }
-        const content = document.createElement('p');
-        content.textContent = message.content;
+        const content = message.attachment ? document.createElement('a') : document.createElement('p');
+        if (message.attachment) {
+            content.className = 'study-chat-file';
+            content.href = `/study/chat/files/${encodeURIComponent(conversationId)}/${encodeURIComponent(message.id)}/`;
+            const name = document.createElement('strong');
+            name.textContent = message.attachment.name;
+            const size = document.createElement('small');
+            size.textContent = message.attachment.size < 1024 ? `${message.attachment.size} B` : message.attachment.size < 1024 * 1024 ? `${(message.attachment.size / 1024).toFixed(1)} KB` : `${(message.attachment.size / 1024 / 1024).toFixed(1)} MB`;
+            content.append(name, size);
+        } else content.textContent = message.content;
         const time = document.createElement('time');
         time.textContent = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt));
         item.append(content, time);

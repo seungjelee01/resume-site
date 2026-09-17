@@ -3,8 +3,9 @@ const messages = document.querySelector('[data-admin-chat-messages]');
 const status = document.querySelector('[data-admin-chat-status]');
 const form = document.querySelector('[data-admin-chat-form]');
 const input = document.querySelector('[data-admin-chat-input]');
+const fileInput = document.querySelector('[data-admin-chat-file]');
 
-if (panel && messages && status && form && input) {
+if (panel && messages && status && form && input && fileInput) {
   const conversationId = panel.dataset.conversationId;
   const visitorLabel = panel.dataset.visitorLabel || `방문자 #${conversationId.slice(0, 4).toUpperCase()}`;
   let socket;
@@ -16,8 +17,16 @@ if (panel && messages && status && form && input) {
     item.className = `is-${message.sender}`;
     const sender = document.createElement('span');
     sender.textContent = message.sender === 'admin' ? '관리자' : visitorLabel;
-    const content = document.createElement('p');
-    content.textContent = message.content;
+    const content = message.attachment ? document.createElement('a') : document.createElement('p');
+    if (message.attachment) {
+      content.className = 'admin-chat-file';
+      content.href = `/admin/chats/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(message.id)}/`;
+      const name = document.createElement('strong');
+      name.textContent = message.attachment.name;
+      const size = document.createElement('small');
+      size.textContent = message.attachment.size < 1024 ? `${message.attachment.size} B` : message.attachment.size < 1024 * 1024 ? `${(message.attachment.size / 1024).toFixed(1)} KB` : `${(message.attachment.size / 1024 / 1024).toFixed(1)} MB`;
+      content.append(name, size);
+    } else content.textContent = message.content;
     const time = document.createElement('time');
     time.textContent = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt));
     item.append(sender, content, time);
@@ -53,8 +62,29 @@ if (panel && messages && status && form && input) {
     event.preventDefault();
     form.requestSubmit();
   });
-  form.addEventListener('submit', (event) => {
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) status.textContent = `${fileInput.files[0].name} · 전송 버튼을 눌러 보내세요.`;
+  });
+  form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const file = fileInput.files[0];
+    if (file) {
+      if (!file.name.toLowerCase().endsWith('.txt') || file.size > 2 * 1024 * 1024) {
+        status.textContent = '2MB 이하의 .txt 파일만 전송할 수 있습니다.';
+        return;
+      }
+      const data = new FormData();
+      data.append('file', file);
+      try {
+        status.textContent = '파일을 전송하는 중입니다.';
+        const response = await fetch(`/admin/chats/${encodeURIComponent(conversationId)}/files`, { method: 'POST', body: data });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || '파일을 전송하지 못했습니다.');
+        fileInput.value = '';
+        status.textContent = '파일을 전송했습니다.';
+      } catch (error) { status.textContent = error.message; }
+      return;
+    }
     const content = input.value.trim();
     if (!content || socket?.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ type: 'message', content }));

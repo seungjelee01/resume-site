@@ -17,6 +17,10 @@
 .admin-chat-panel li span, .admin-chat-panel li time { display: block; color: var(--muted); font-size: 10px; }
 .admin-chat-panel li p { margin: 4px 0; padding: 10px 12px; border-radius: 9px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); }
 .admin-chat-panel li.is-admin p { color: #fff; background: var(--accent); }
+.admin-chat-file { display: grid; gap: 3px; margin: 4px 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--bg); text-decoration: none; }
+.admin-chat-file:hover { border-color: var(--accent); }
+.admin-chat-file strong { overflow-wrap: anywhere; }
+.admin-chat-file small { color: var(--muted); font-size: 10px; }
 .admin-chat-panel li.is-admin time { text-align: right; }
 .admin-chat-message-delete { display: block; margin: 3px 0 0 auto; padding: 2px 0; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
 .admin-chat-message-delete:hover { color: #b44a4a; text-decoration: underline; }
@@ -24,5 +28,8 @@
 .admin-chat-panel form { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px; border-top: 1px solid var(--line); }
 .admin-chat-panel form label { position: absolute; left: -10000px; }
 .admin-chat-panel form textarea { min-height: 62px; }
+.admin-chat-actions { display: flex; align-items: stretch; gap: 8px; }
+.admin-chat-panel form .admin-chat-file-button { position: relative; left: auto; display: inline-flex; align-items: center; cursor: pointer; }
+.admin-chat-file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .admin-chat-delete { margin-top: 18px; text-align: right; }
 @media (max-width: 700px) { .admin-chat-room div { align-items: flex-start; flex-wrap: wrap; } .admin-chat-room time { width: 100%; margin-left: 0; } .admin-chat-panel li { max-width: 90%; } }
