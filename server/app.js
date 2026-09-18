@@ -459,14 +459,6 @@ function escapeHtml(value = '') {
     .replaceAll("'", '&#039;');
 }
 
-function sendStudyNotFound(res) {
-  return res.status(404).sendFile(path.join(rootDir, 'study', '404.html'));
-}
-
-function sendAdminNotFound(res) {
-  return res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
-}
-
 function slugFromFilename(filename) {
   return filename.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
 }
@@ -784,7 +776,7 @@ app.get('/study/:slug/', async (req, res, next) => {
   try {
     const posts = await loadPosts();
     const post = posts.find((item) => item.slug === req.params.slug);
-    if (!post) return sendStudyNotFound(res);
+    if (!post) return res.status(404).send('Not found');
     const comments = await loadComments(post.slug);
     const downloadableFiles = post.attachmentFiles.filter((filename) => !imageExtensions.has(path.extname(filename).toLowerCase()));
     const attachments = downloadableFiles.length ? `<section class="study-attachments"><h2>첨부 파일</h2><ul>${downloadableFiles.map((filename) => { const action = filename.toLowerCase().endsWith('.pdf') ? '다운로드' : '보기'; return `<li><a href="/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/"><code>${escapeHtml(filename)}</code> ${action}</a></li>`; }).join('')}</ul></section>` : '';
@@ -843,10 +835,10 @@ app.post('/study/:slug/comments/:commentId/replies/', requireSameOrigin, async (
 
 app.get('/study/:slug/files/:filename/', async (req, res, next) => {
   try {
-    if (!validateSlug(req.params.slug) || !attachmentNamePattern.test(req.params.filename)) return sendStudyNotFound(res);
+    if (!validateSlug(req.params.slug) || !attachmentNamePattern.test(req.params.filename)) return res.status(404).send('Not found');
     const posts = await loadPosts();
     const post = posts.find((item) => item.slug === req.params.slug);
-    if (!post || !post.attachmentFiles.includes(req.params.filename)) return sendStudyNotFound(res);
+    if (!post || !post.attachmentFiles.includes(req.params.filename)) return res.status(404).send('Not found');
     const filePath = path.join(studyFilesDir, post.slug, req.params.filename);
     const extension = path.extname(req.params.filename).toLowerCase();
     if (extension === '.pdf') return res.download(filePath, req.params.filename);
@@ -858,11 +850,6 @@ app.get('/study/:slug/files/:filename/', async (req, res, next) => {
     const content = `<article class="study-note study-file"><header class="study-note-header"><p class="study-note-date">${escapeHtml(post.title)}</p><h1>${escapeHtml(req.params.filename)}</h1></header><pre><code>${escapeHtml(source)}</code></pre><footer class="study-note-footer"><a href="/study/${encodeURIComponent(post.slug)}/">← 글로 돌아가기</a></footer></article>`;
     res.send(studyLayout({ title: req.params.filename, description: `${post.title}의 Python 첨부 파일`, content, posts }));
   } catch (error) { next(error); }
-});
-
-app.use('/study', (req, res, next) => {
-  if (['GET', 'HEAD'].includes(req.method) && req.accepts('html')) return sendStudyNotFound(res);
-  next();
 });
 
 async function requireAdmin(req, res, next) {
@@ -1505,11 +1492,6 @@ app.post('/admin/delete/:slug', async (req, res, next) => {
     }
     res.redirect('/admin/notes/');
   } catch (error) { next(error); }
-});
-
-app.use('/admin', (req, res, next) => {
-  if (['GET', 'HEAD'].includes(req.method) && req.accepts('html')) return sendAdminNotFound(res);
-  next();
 });
 
 app.use((error, _req, res, _next) => {
