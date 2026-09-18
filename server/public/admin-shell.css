@@ -338,6 +338,20 @@
     font-size: 14px;
 }
 
+.admin-settings-access label:has(input[type="checkbox"]) {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 14px;
+}
+
+.admin-settings-access input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
 .admin-settings-access small {
     color: var(--muted);
     font-size: 12px;
