@@ -1026,9 +1026,9 @@ a {
 
 .study-chat[hidden] { display: none; }
 .study-chat > header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--study-border); background: var(--study-surface); }
-.study-chat > header div { display: grid; gap: 3px; }
+.study-chat > header div { display: grid; min-width: 0; gap: 3px; }
 .study-chat > header strong { color: var(--study-text); }
-.study-chat > header span { color: var(--study-muted); font-size: 11px; }
+.study-chat > header span { overflow: hidden; color: var(--study-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .study-chat > header button {
     display: inline-flex;
     flex: 0 0 36px;
@@ -1063,10 +1063,10 @@ a {
 .study-chat-file small { color: var(--study-muted); font-size: 10px; }
 .study-chat li time { display: block; margin-top: 3px; color: var(--study-muted); font-size: 10px; text-align: right; }
 .study-chat-privacy { margin: 0; padding: 8px 12px; border-top: 1px solid var(--study-border); color: var(--study-muted); background: var(--study-surface); font-size: 11px; line-height: 1.5; }
-.study-chat form { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; border-top: 1px solid var(--study-border); background: var(--study-surface); }
+.study-chat form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; border-top: 1px solid var(--study-border); background: var(--study-surface); }
 .study-chat form label { position: absolute; left: -10000px; }
-.study-chat textarea { min-height: 42px; padding: 10px; border: 1px solid var(--study-border); border-radius: 8px; color: var(--study-text); background: var(--study-bg); font: inherit; resize: none; }
-.study-chat form button { padding: 0 15px; border: 0; border-radius: 8px; color: #fff; background: var(--study-accent); font-weight: 600; cursor: pointer; }
+.study-chat textarea { width: 100%; min-width: 0; min-height: 42px; padding: 10px; border: 1px solid var(--study-border); border-radius: 8px; color: var(--study-text); background: var(--study-bg); font: inherit; resize: none; }
+.study-chat form button { min-width: max-content; padding: 0 15px; border: 0; border-radius: 8px; color: #fff; background: var(--study-accent); font-weight: 600; cursor: pointer; }
 
 @media (max-width: 600px) {
     .study-chat-open { right: 16px; bottom: 16px; }
