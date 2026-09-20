@@ -776,8 +776,8 @@ app.get('/study/', async (req, res, next) => {
       return result;
     }, new Map());
     const archive = posts.length ? [...groups].map(([month, items]) => `<section class="study-month" id="month-${month}" data-study-month><h2>${month}</h2><div class="study-note-list">${items.map((post) => `<article class="study-note-card" data-study-note data-category="${escapeHtml(post.category)}" data-tags="${escapeHtml(post.tags.join('||'))}" data-search="${escapeHtml([post.title, post.category, ...post.tags].join(' '))}"><time datetime="${post.date}">${post.date.slice(5, 7)}월 ${post.date.slice(8)}일</time><a class="study-card-category" href="/study/?category=${encodeURIComponent(post.category)}">${escapeHtml(post.category)}</a><h3><a href="/study/${encodeURIComponent(post.slug)}/">${escapeHtml(post.title)}</a></h3><div class="study-card-tags">${post.tags.map((tag) => `<a href="/study/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join('')}</div></article>`).join('')}</div></section>`).join('') : '<section class="study-empty-state"><h2>첫 기록을 작성해 보세요.</h2></section>';
-    const content = `<header class="study-home-header"><p class="study-eyebrow">TECH LEARNING NOTES</p><h1>개발 학습 기록</h1><p>Oracle 데이터베이스를 중심으로 SQL, PL/SQL, Linux 등 데이터베이스 설계·개발·관리에 필요한 기술을 정리합니다.</p></header><div class="study-filter-status" data-filter-status hidden><span data-filter-summary></span><a href="/study/">필터 해제</a></div><div class="study-archive" data-study-archive>${archive}</div><p class="study-empty-filter" data-empty-filter hidden>검색 조건에 해당하는 기록이 없습니다.</p>`;
-    res.send(studyLayout({ title: '개발 학습 기록', description: 'Oracle 데이터베이스와 DBA 학습 기록', content, posts, isHome: true }));
+    const content = `<header class="study-home-header"><h1>TECH NOTES</h1><p>Oracle 데이터베이스를 중심으로 SQL, PL/SQL, Linux 등 데이터베이스 설계·개발·관리에 필요한 기술을 정리합니다.</p></header><div class="study-filter-status" data-filter-status hidden><span data-filter-summary></span><a href="/study/">필터 해제</a></div><div class="study-archive" data-study-archive>${archive}</div><p class="study-empty-filter" data-empty-filter hidden>검색 조건에 해당하는 기록이 없습니다.</p>`;
+    res.send(studyLayout({ title: 'Tech Notes', description: 'Oracle 데이터베이스 설계·개발·관리 기술 기록', content, posts, isHome: true }));
     trackStudyVisit(req);
   } catch (error) { next(error); }
 });
@@ -1261,7 +1261,7 @@ app.get('/admin/notes/', async (_req, res, next) => {
   try {
     const posts = await loadPosts();
     const rows = posts.map((post) => `<tr><td>${post.date}</td><td><a href="/admin/edit/${encodeURIComponent(post.slug)}">${escapeHtml(post.title)}</a></td><td>${escapeHtml(post.category)}</td><td>${post.tags.map(escapeHtml).join(', ')}</td><td><a href="/study/${encodeURIComponent(post.slug)}/">보기</a></td></tr>`).join('');
-    res.send(adminLayout('글 목록', `<div class="admin-title"><div><p>TECH LEARNING NOTES</p><h1>글 목록</h1></div><a class="button primary" href="/admin/new">새 글 작성</a></div><div class="table-wrap"><table><thead><tr><th>날짜</th><th>제목</th><th>카테고리</th><th>태그</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`, res.locals.adminEmail, 'notes'));
+    res.send(adminLayout('글 목록', `<div class="admin-title"><div><p>TECH NOTES</p><h1>글 목록</h1></div><a class="button primary" href="/admin/new">새 글 작성</a></div><div class="table-wrap"><table><thead><tr><th>날짜</th><th>제목</th><th>카테고리</th><th>태그</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`, res.locals.adminEmail, 'notes'));
   } catch (error) { next(error); }
 });
 
