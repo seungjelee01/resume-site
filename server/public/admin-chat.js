@@ -4,12 +4,31 @@ const status = document.querySelector('[data-admin-chat-status]');
 const form = document.querySelector('[data-admin-chat-form]');
 const input = document.querySelector('[data-admin-chat-input]');
 const fileInput = document.querySelector('[data-admin-chat-file]');
+const selectedFile = document.querySelector('[data-admin-chat-selected-file]');
+const selectedFileName = document.querySelector('[data-admin-chat-selected-name]');
+const selectedFileSize = document.querySelector('[data-admin-chat-selected-size]');
+const clearFileButton = document.querySelector('[data-admin-chat-file-clear]');
+const fileButtonLabel = document.querySelector('[data-admin-chat-file-label]');
+const submitButton = document.querySelector('[data-admin-chat-submit]');
 
-if (panel && messages && status && form && input && fileInput) {
+if (panel && messages && status && form && input && fileInput && selectedFile && selectedFileName && selectedFileSize && clearFileButton && fileButtonLabel && submitButton) {
   const conversationId = panel.dataset.conversationId;
   const visitorLabel = panel.dataset.visitorLabel || `방문자 #${conversationId.slice(0, 4).toUpperCase()}`;
   let socket;
   let reconnectTimer;
+  const formatFileSize = (size) => size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`;
+  const updateSelectedFile = () => {
+    const file = fileInput.files[0];
+    selectedFile.hidden = !file;
+    selectedFileName.textContent = file?.name || '';
+    selectedFileSize.textContent = file ? formatFileSize(file.size) : '';
+    fileButtonLabel.textContent = file ? 'TXT 선택됨' : 'TXT 첨부';
+    fileButtonLabel.closest('.admin-chat-file-button')?.classList.toggle('is-selected', Boolean(file));
+  };
+  const clearSelectedFile = () => {
+    fileInput.value = '';
+    updateSelectedFile();
+  };
   const renderMessage = (message) => {
     if (messages.querySelector(`[data-message-id="${CSS.escape(message.id)}"]`)) return;
     const item = document.createElement('li');
@@ -24,7 +43,7 @@ if (panel && messages && status && form && input && fileInput) {
       const name = document.createElement('strong');
       name.textContent = message.attachment.name;
       const size = document.createElement('small');
-      size.textContent = message.attachment.size < 1024 ? `${message.attachment.size} B` : message.attachment.size < 1024 * 1024 ? `${(message.attachment.size / 1024).toFixed(1)} KB` : `${(message.attachment.size / 1024 / 1024).toFixed(1)} MB`;
+      size.textContent = formatFileSize(message.attachment.size);
       content.append(name, size);
     } else content.textContent = message.content;
     const time = document.createElement('time');
@@ -63,7 +82,12 @@ if (panel && messages && status && form && input && fileInput) {
     form.requestSubmit();
   });
   fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) status.textContent = `${fileInput.files[0].name} · 전송 버튼을 눌러 보내세요.`;
+    updateSelectedFile();
+    if (fileInput.files[0]) status.textContent = `${fileInput.files[0].name} 파일이 첨부되었습니다. 전송 버튼을 눌러 보내세요.`;
+  });
+  clearFileButton.addEventListener('click', () => {
+    clearSelectedFile();
+    status.textContent = '첨부 파일 선택을 취소했습니다.';
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -76,13 +100,24 @@ if (panel && messages && status && form && input && fileInput) {
       const data = new FormData();
       data.append('file', file);
       try {
+        submitButton.disabled = true;
+        fileInput.disabled = true;
+        clearFileButton.disabled = true;
+        selectedFile.classList.add('is-sending');
         status.textContent = '파일을 전송하는 중입니다.';
         const response = await fetch(`/admin/chats/${encodeURIComponent(conversationId)}/files`, { method: 'POST', body: data });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || '파일을 전송하지 못했습니다.');
-        fileInput.value = '';
+        if (result.message) renderMessage(result.message);
+        clearSelectedFile();
         status.textContent = '파일을 전송했습니다.';
       } catch (error) { status.textContent = error.message; }
+      finally {
+        submitButton.disabled = false;
+        fileInput.disabled = false;
+        clearFileButton.disabled = false;
+        selectedFile.classList.remove('is-sending');
+      }
       return;
     }
     const content = input.value.trim();

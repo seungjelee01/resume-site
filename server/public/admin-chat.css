@@ -30,6 +30,17 @@
 .admin-chat-panel form textarea { min-height: 62px; }
 .admin-chat-actions { display: flex; align-items: stretch; gap: 8px; }
 .admin-chat-panel form .admin-chat-file-button { position: relative; left: auto; display: inline-flex; align-items: center; cursor: pointer; }
+.admin-chat-panel form .admin-chat-file-button.is-selected { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .admin-chat-file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.admin-chat-selected-file { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--accent); color: var(--text); background: var(--accent-soft); }
+.admin-chat-selected-file[hidden] { display: none; }
+.admin-chat-selected-file.is-sending { opacity: .65; }
+.admin-chat-selected-file div { display: grid; min-width: 0; gap: 2px; }
+.admin-chat-selected-file strong { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.admin-chat-selected-file small { color: var(--muted); }
+.admin-chat-selected-file button { flex: none; padding: 4px 0; border: 0; color: var(--accent); background: transparent; font: 650 11px/1 var(--sans); cursor: pointer; }
+.admin-chat-selected-file button:hover { text-decoration: underline; }
+.admin-chat-selected-file button:disabled { cursor: wait; opacity: .6; }
+.admin-chat-actions button:disabled { cursor: wait; opacity: .6; }
 .admin-chat-delete { margin-top: 18px; text-align: right; }
 @media (max-width: 700px) { .admin-chat-room div { align-items: flex-start; flex-wrap: wrap; } .admin-chat-room time { width: 100%; margin-left: 0; } .admin-chat-panel li { max-width: 90%; } }
