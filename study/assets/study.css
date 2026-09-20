@@ -1028,7 +1028,27 @@ a {
 .study-chat > header div { display: grid; gap: 3px; }
 .study-chat > header strong { color: var(--study-text); }
 .study-chat > header span { color: var(--study-muted); font-size: 11px; }
-.study-chat > header button { border: 0; color: var(--study-muted); background: transparent; font-size: 24px; cursor: pointer; }
+.study-chat > header button {
+    display: inline-flex;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--study-border);
+    border-radius: 8px;
+    color: var(--study-text);
+    background: var(--study-bg);
+    font: 400 24px/1 'Noto Sans KR', sans-serif;
+    cursor: pointer;
+}
+.study-chat > header button:hover,
+.study-chat > header button:focus-visible {
+    border-color: var(--study-accent);
+    color: var(--study-accent);
+    background: var(--study-accent-soft);
+}
 .study-chat ol { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 16px; overflow-y: auto; list-style: none; }
 .study-chat li { max-width: 82%; }
 .study-chat li.is-visitor { align-self: flex-end; }
