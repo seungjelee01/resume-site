@@ -1014,7 +1014,8 @@ a {
     z-index: 21;
     display: grid;
     grid-template-rows: auto minmax(220px, 1fr) auto auto;
-    width: min(380px, calc(100vw - 32px));
+    width: 380px;
+    max-width: calc(100% - 48px);
     height: min(560px, calc(100vh - 48px));
     overflow: hidden;
     border: 1px solid var(--study-border);
@@ -1069,7 +1070,7 @@ a {
 
 @media (max-width: 600px) {
     .study-chat-open { right: 16px; bottom: 16px; }
-    .study-chat { right: 8px; bottom: 8px; width: calc(100vw - 16px); height: min(620px, calc(100vh - 16px)); }
+    .study-chat { right: 8px; bottom: 8px; left: 8px; width: auto; max-width: none; height: min(620px, calc(100vh - 16px)); }
 }
 
 .study-sidebar-footer {
