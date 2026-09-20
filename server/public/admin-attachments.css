@@ -37,6 +37,43 @@
     color: var(--muted);
 }
 
+.attachment-markdown {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.attachment-markdown button {
+    display: inline-flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 7px;
+    border: 1px solid var(--line);
+    color: var(--text);
+    background: var(--bg);
+    cursor: pointer;
+}
+
+.attachment-markdown button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.attachment-markdown button code {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachment-markdown button span {
+    flex: none;
+    color: var(--accent);
+    font: 650 11px/1 var(--sans);
+}
+
 .attached-files form {
     flex: none;
 }
