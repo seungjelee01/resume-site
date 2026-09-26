@@ -17,10 +17,9 @@
 .admin-chat-panel li span, .admin-chat-panel li time { display: block; color: var(--muted); font-size: 10px; }
 .admin-chat-panel li p { margin: 4px 0; padding: 10px 12px; border-radius: 9px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); }
 .admin-chat-panel li.is-admin p { color: #fff; background: var(--accent); }
-.admin-chat-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; margin: 4px 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--bg); text-decoration: none; }
+.admin-chat-file { display: grid; gap: 3px; margin: 4px 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--bg); text-decoration: none; }
 .admin-chat-file:hover { border-color: var(--accent); }
 .admin-chat-file strong { overflow-wrap: anywhere; }
-.admin-chat-panel .admin-chat-file > span { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--accent); font-size: 11px; font-weight: 700; }
 .admin-chat-file small { color: var(--muted); font-size: 10px; }
 .admin-chat-panel li.is-admin time { text-align: right; }
 .admin-chat-message-delete { display: block; margin: 3px 0 0 auto; padding: 2px 0; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
