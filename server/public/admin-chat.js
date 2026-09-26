@@ -40,11 +40,14 @@ if (panel && messages && status && form && input && fileInput && selectedFile &&
     if (message.attachment) {
       content.className = 'admin-chat-file';
       content.href = `/admin/chats/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(message.id)}/`;
+      content.download = message.attachment.name;
       const name = document.createElement('strong');
       name.textContent = message.attachment.name;
       const size = document.createElement('small');
       size.textContent = formatFileSize(message.attachment.size);
-      content.append(name, size);
+      const action = document.createElement('span');
+      action.textContent = '다운로드';
+      content.append(name, size, action);
     } else content.textContent = message.content;
     const time = document.createElement('time');
     time.textContent = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt));
