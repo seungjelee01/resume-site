@@ -172,8 +172,8 @@ function initStudyChat() {
     fileInput.addEventListener('change', () => {
         const file = fileInput.files[0];
         if (!file) return clearFile();
-        if (!file.name.toLowerCase().endsWith('.zip') || file.size < 1 || file.size > 1024 * 1024 * 1024) {
-            status.textContent = '1GB 이하의 .zip 파일만 전송할 수 있습니다.';
+        if (!file.name.toLowerCase().endsWith('.zip') || file.size < 1 || file.size > 2 * 1024 * 1024 * 1024) {
+            status.textContent = '2GB 이하의 .zip 파일만 전송할 수 있습니다.';
             return clearFile();
         }
         uploadBox.hidden = false;
