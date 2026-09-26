@@ -1432,7 +1432,7 @@ function editor(post = {}) {
   const isEdit = Boolean(post.filename);
   const existingFiles = (post.attachmentFiles || []).map((filename) => {
     const isImage = imageExtensions.has(path.extname(filename).toLowerCase());
-    const imageMarkdown = isImage ? `<small class="attachment-markdown"><span>본문 삽입</span><button type="button" data-copy-markdown title="Markdown 복사"><code>![설명](/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/)</code><span data-copy-label aria-live="polite">복사</span></button></small>` : '';
+    const imageMarkdown = isImage ? `<small class="attachment-markdown"><span>본문 삽입</span><button type="button" data-copy-markdown title="Markdown 복사"><code>[![설명](/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/)](/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/)</code><span data-copy-label aria-live="polite">복사</span></button></small>` : '';
     return `<li><div><code>${escapeHtml(filename)}</code>${imageMarkdown}</div><form method="post" action="/admin/edit/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/delete" onsubmit="return confirm('이 첨부 파일을 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form></li>`;
   }).join('');
   const attachmentList = existingFiles ? `<div class="attached-files"><strong>현재 첨부</strong><ul>${existingFiles}</ul></div>` : '';
