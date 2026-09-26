@@ -163,34 +163,6 @@ function initStudyChat() {
         form.requestSubmit();
     });
     const formatFileSize = (size) => size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`;
-    const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-    const sendChunk = async (url, offset, chunk) => {
-        let lastError;
-        for (let attempt = 1; attempt <= 3; attempt += 1) {
-            try {
-                const response = await fetch(url, {
-                    method: 'PUT', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/octet-stream', 'Upload-Offset': String(offset) }, body: chunk,
-                });
-                const result = await response.json().catch(() => ({}));
-                if (response.ok) return result;
-                const error = new Error(result.error || `파일 전송 중 오류가 발생했습니다. (HTTP ${response.status})`);
-                if (response.status < 500 && ![408, 429].includes(response.status)) {
-                    error.retryable = false;
-                    throw error;
-                }
-                lastError = error;
-            } catch (error) {
-                if (error.retryable === false) throw error;
-                lastError = error;
-            }
-            if (attempt < 3) {
-                uploadProgress.textContent = `연결이 불안정해 다시 전송하는 중입니다. (${attempt}/2)`;
-                await wait(attempt * 700);
-            }
-        }
-        throw lastError || new Error('파일 전송 중 네트워크 연결이 끊겼습니다.');
-    };
     const clearFile = () => {
         fileInput.value = '';
         uploadBox.hidden = true;
@@ -227,7 +199,11 @@ function initStudyChat() {
                 uploadId = result.uploadId;
                 for (let offset = 0; offset < file.size; offset += result.chunkSize) {
                     const chunk = file.slice(offset, Math.min(offset + result.chunkSize, file.size));
-                    result = await sendChunk(`/study/chat/uploads/${encodeURIComponent(uploadId)}/`, offset, chunk);
+                    response = await fetch(`/study/chat/uploads/${encodeURIComponent(uploadId)}/`, {
+                        method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream', 'Upload-Offset': String(offset) }, body: chunk,
+                    });
+                    result = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(result.error || '파일 전송 중 오류가 발생했습니다.');
                     const percent = Math.round(result.received / result.size * 100);
                     uploadBar.value = percent;
                     uploadProgress.textContent = `${formatFileSize(result.received)} / ${formatFileSize(result.size)} · ${percent}%`;
@@ -242,7 +218,7 @@ function initStudyChat() {
             } catch (error) {
                 if (uploadId) fetch(`/study/chat/uploads/${encodeURIComponent(uploadId)}/`, { method: 'DELETE', credentials: 'same-origin', keepalive: true });
                 status.textContent = error.message;
-                uploadProgress.textContent = `전송 실패 · ${error.message}`;
+                uploadProgress.textContent = '전송 실패 · 다시 시도해 주세요.';
                 uploadId = '';
             } finally {
                 submitButton.disabled = false;
