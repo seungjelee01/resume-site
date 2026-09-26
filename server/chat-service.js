@@ -8,7 +8,7 @@ const visitorMessageMaxLength = 1000;
 const adminMessageMaxLength = 5000;
 const adminTextFileMaxSize = 2 * 1024 * 1024;
 const visitorFileMaxSize = 2 * 1024 * 1024 * 1024;
-const visitorFileChunkMaxSize = 64 * 1024 * 1024;
+const visitorFileChunkMaxSize = 8 * 1024 * 1024;
 const visitorFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:zip|exe)$/iu;
 const textFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.txt$/iu;
 const visitorLabel = (conversation) => conversation.visitorName || `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`;

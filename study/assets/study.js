@@ -166,7 +166,7 @@ function initStudyChat() {
     const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
     const sendChunk = async (url, offset, chunk) => {
         let lastError;
-        for (let attempt = 1; attempt <= 5; attempt += 1) {
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
             try {
                 const response = await fetch(url, {
                     method: 'PUT', credentials: 'same-origin',
@@ -184,9 +184,9 @@ function initStudyChat() {
                 if (error.retryable === false) throw error;
                 lastError = error;
             }
-            if (attempt < 5) {
-                uploadProgress.textContent = `연결이 불안정해 다시 전송하는 중입니다. (${attempt}/4)`;
-                await wait(Math.min(2 ** (attempt - 1) * 1000, 8000));
+            if (attempt < 3) {
+                uploadProgress.textContent = `연결이 불안정해 다시 전송하는 중입니다. (${attempt}/2)`;
+                await wait(attempt * 700);
             }
         }
         throw lastError || new Error('파일 전송 중 네트워크 연결이 끊겼습니다.');
