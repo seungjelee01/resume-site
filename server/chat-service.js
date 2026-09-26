@@ -7,9 +7,6 @@ const idPattern = /^[0-9a-f-]{36}$/i;
 const visitorMessageMaxLength = 1000;
 const adminMessageMaxLength = 5000;
 const adminTextFileMaxSize = 2 * 1024 * 1024;
-const visitorZipFileMaxSize = 1024 * 1024 * 1024;
-const visitorZipChunkMaxSize = 8 * 1024 * 1024;
-const visitorZipFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.zip$/iu;
 const textFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.txt$/iu;
 const visitorLabel = (conversation) => conversation.visitorName || `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`;
 
@@ -43,24 +40,11 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
   const writeQueues = new Map();
   const rateLimits = new Map();
   const sessionRateLimits = new Map();
-  const visitorUploads = new Map();
   let lastRetentionCleanup = 0;
 
   const filePath = (id) => path.join(directory, `${id}.json`);
   const attachmentDirectory = (id) => path.join(directory, `${id}.files`);
-  const attachmentPath = (id, messageId, attachment) => {
-    const extension = path.extname(attachment?.name || '').toLowerCase() === '.zip' ? '.zip' : '.txt';
-    return path.join(attachmentDirectory(id), `${messageId}${extension}`);
-  };
-  const uploadPath = (id, uploadId) => path.join(attachmentDirectory(id), `.${uploadId}.upload`);
-  const purgeStaleUploads = async () => {
-    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
-    await Promise.all([...visitorUploads.entries()].map(async ([uploadId, upload]) => {
-      if (upload.updatedAt >= cutoff) return;
-      visitorUploads.delete(uploadId);
-      await fs.rm(uploadPath(upload.conversationId, uploadId), { force: true });
-    }));
-  };
+  const attachmentPath = (id, messageId) => path.join(attachmentDirectory(id), `${messageId}.txt`);
   const load = async (id) => JSON.parse(await fs.readFile(filePath(id), 'utf8'));
   const save = async (conversation) => {
     await fs.mkdir(directory, { recursive: true });
@@ -129,18 +113,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     await fs.mkdir(directory, { recursive: true, mode: 0o700 });
     await fs.chmod(directory, 0o700);
     const cutoff = now - limits.retentionDays * 24 * 60 * 60 * 1000;
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-    const files = entries.filter((entry) => entry.isFile() && entry.name.endsWith('.json') && idPattern.test(entry.name.slice(0, -5))).map((entry) => entry.name);
-    const uploadCutoff = now - 2 * 60 * 60 * 1000;
-    await Promise.all(entries.filter((entry) => entry.isDirectory() && entry.name.endsWith('.files')).map(async (entry) => {
-      const uploadDirectory = path.join(directory, entry.name);
-      const names = await fs.readdir(uploadDirectory);
-      await Promise.all(names.filter((name) => name.startsWith('.') && name.endsWith('.upload')).map(async (name) => {
-        const target = path.join(uploadDirectory, name);
-        const stats = await fs.stat(target);
-        if (stats.mtimeMs < uploadCutoff) await fs.rm(target, { force: true });
-      }));
-    }));
+    const files = (await fs.readdir(directory)).filter((name) => name.endsWith('.json') && idPattern.test(name.slice(0, -5)));
     await Promise.all(files.map(async (name) => {
       const id = name.slice(0, -5);
       try {
@@ -216,7 +189,6 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     if (!idPattern.test(id)) return false;
     for (const socket of clients.get(id) || []) socket.close(1008, 'conversation deleted');
     clients.delete(id);
-    for (const [uploadId, upload] of visitorUploads) if (upload.conversationId === id) visitorUploads.delete(uploadId);
     try {
       await fs.rm(filePath(id));
       await fs.rm(attachmentDirectory(id), { recursive: true, force: true });
@@ -249,7 +221,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
       if (current.messages.length >= limits.maxMessages) throw new Error(`한 문의에서는 메시지를 ${limits.maxMessages}개까지 보낼 수 있습니다.`);
       await fs.mkdir(attachmentDirectory(id), { recursive: true, mode: 0o700 });
       await fs.chmod(attachmentDirectory(id), 0o700);
-      const target = attachmentPath(id, message.id, message.attachment);
+      const target = attachmentPath(id, message.id);
       try {
         await fs.writeFile(target, buffer, { mode: 0o640, flag: 'wx' });
         current.messages.push(message);
@@ -270,10 +242,10 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     if (![id, messageId].every((value) => idPattern.test(String(value || '')))) return null;
     try {
       const conversation = await load(id);
-      const message = conversation.messages.find((item) => item.id === messageId && item.attachment);
+      const message = conversation.messages.find((item) => item.id === messageId && item.sender === 'admin' && item.attachment);
       if (!message) return null;
-      await fs.access(attachmentPath(id, messageId, message.attachment));
-      return { path: attachmentPath(id, messageId, message.attachment), name: message.attachment.name };
+      await fs.access(attachmentPath(id, messageId));
+      return { path: attachmentPath(id, messageId), name: message.attachment.name };
     } catch { return null; }
   }
 
@@ -281,84 +253,6 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     const conversation = await authenticate(cookieHeader);
     if (!conversation || conversation.id !== id) return null;
     return getAttachment(id, messageId);
-  }
-
-  async function beginVisitorUpload(cookieHeader, input) {
-    await purgeStaleUploads();
-    const conversation = await authenticate(cookieHeader);
-    if (!conversation) throw new Error('문의 세션이 만료되었습니다. 채팅창을 다시 열어 주세요.');
-    const name = String(input?.name || '').normalize('NFC');
-    const size = Number(input?.size);
-    if (!visitorZipFileNamePattern.test(name) || !Number.isSafeInteger(size) || size < 1 || size > visitorZipFileMaxSize) throw new Error('1GB 이하의 .zip 파일만 전송할 수 있습니다.');
-    if (conversation.messages.some((message) => message.sender === 'visitor' && message.attachment?.name?.toLowerCase().endsWith('.zip'))) throw new Error('한 문의에서는 ZIP 파일을 한 개만 전송할 수 있습니다.');
-    if ([...visitorUploads.values()].some((upload) => upload.conversationId === conversation.id)) throw new Error('이미 전송 중인 파일이 있습니다.');
-    if (visitorUploads.size >= 3) throw new Error('다른 파일을 처리 중입니다. 잠시 후 다시 시도하세요.');
-    const disk = await fs.statfs(directory);
-    if (Number(disk.bavail) * Number(disk.bsize) < size + 2 * 1024 * 1024 * 1024) throw new Error('서버 저장 공간이 부족합니다. 관리자에게 문의해 주세요.');
-    enforceRate(`${conversation.id}:visitor`);
-    const uploadId = crypto.randomUUID();
-    await fs.mkdir(attachmentDirectory(conversation.id), { recursive: true, mode: 0o700 });
-    await fs.chmod(attachmentDirectory(conversation.id), 0o700);
-    await fs.writeFile(uploadPath(conversation.id, uploadId), Buffer.alloc(0), { mode: 0o640, flag: 'wx' });
-    visitorUploads.set(uploadId, { conversationId: conversation.id, name, size, received: 0, updatedAt: Date.now() });
-    return { uploadId, chunkSize: visitorZipChunkMaxSize };
-  }
-
-  async function appendVisitorUpload(cookieHeader, uploadId, offset, buffer) {
-    const conversation = await authenticate(cookieHeader);
-    const upload = visitorUploads.get(uploadId);
-    if (!conversation || !upload || upload.conversationId !== conversation.id) throw new Error('업로드 세션을 찾을 수 없습니다.');
-    if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > visitorZipChunkMaxSize) throw new Error('파일 조각의 크기가 올바르지 않습니다.');
-    if (!Number.isSafeInteger(offset) || offset !== upload.received || offset + buffer.length > upload.size) throw new Error('파일 전송 순서가 올바르지 않습니다.');
-    if (offset === 0 && !['504b0304', '504b0506', '504b0708'].includes(buffer.subarray(0, 4).toString('hex'))) throw new Error('올바른 ZIP 파일이 아닙니다.');
-    await fs.appendFile(uploadPath(conversation.id, uploadId), buffer);
-    upload.received += buffer.length;
-    upload.updatedAt = Date.now();
-    return { received: upload.received, size: upload.size };
-  }
-
-  async function completeVisitorUpload(cookieHeader, uploadId) {
-    const conversation = await authenticate(cookieHeader);
-    const upload = visitorUploads.get(uploadId);
-    if (!conversation || !upload || upload.conversationId !== conversation.id) throw new Error('업로드 세션을 찾을 수 없습니다.');
-    if (upload.received !== upload.size) throw new Error('파일 전송이 완료되지 않았습니다.');
-    const message = { id: crypto.randomUUID(), sender: 'visitor', content: `파일: ${upload.name}`, attachment: { name: upload.name, size: upload.size }, createdAt: new Date().toISOString() };
-    const finalPath = attachmentPath(conversation.id, message.id, message.attachment);
-    let saved;
-    try {
-      saved = await update(conversation.id, async () => {
-        const current = await loadAvailable(conversation.id);
-        if (!current) throw new Error('문의 세션이 만료되었습니다.');
-        if (current.messages.length >= limits.maxMessages) throw new Error(`한 문의에서는 메시지를 ${limits.maxMessages}개까지 보낼 수 있습니다.`);
-        await fs.rename(uploadPath(conversation.id, uploadId), finalPath);
-        current.messages.push(message);
-        current.updatedAt = message.createdAt;
-        const adminIsViewing = [...(clients.get(conversation.id) || [])].some((client) => client.isAdmin && client.readyState === WebSocket.OPEN);
-        if (!adminIsViewing) current.unread = (current.unread || 0) + 1;
-        await save(current);
-        pendingSessions.delete(conversation.id);
-        return current;
-      });
-    } catch (error) {
-      visitorUploads.delete(uploadId);
-      await fs.rm(uploadPath(conversation.id, uploadId), { force: true });
-      await fs.rm(finalPath, { force: true });
-      throw error;
-    }
-    visitorUploads.delete(uploadId);
-    broadcast(conversation.id, { type: 'message', message });
-    broadcastRoom(saved);
-    notify(saved, message);
-    return message;
-  }
-
-  async function abortVisitorUpload(cookieHeader, uploadId) {
-    const conversation = await authenticate(cookieHeader);
-    const upload = visitorUploads.get(uploadId);
-    if (!conversation || !upload || upload.conversationId !== conversation.id) return false;
-    visitorUploads.delete(uploadId);
-    await fs.rm(uploadPath(conversation.id, uploadId), { force: true });
-    return true;
   }
 
   function attach(server) {
@@ -412,12 +306,12 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
             const saved = await update(id, async () => {
               const current = await loadAvailable(id);
               if (!current) throw new Error('문의 세션을 찾을 수 없습니다.');
-              const index = current.messages.findIndex((message) => message.id === input.messageId && (message.sender === 'admin' || message.attachment));
+              const index = current.messages.findIndex((message) => message.id === input.messageId && message.sender === 'admin');
               if (index < 0) throw new Error('삭제할 수 없는 메시지입니다.');
               const [removed] = current.messages.splice(index, 1);
               current.updatedAt = current.messages.at(-1)?.createdAt || current.createdAt;
               await save(current);
-              if (removed.attachment) await fs.rm(attachmentPath(id, removed.id, removed.attachment), { force: true });
+              if (removed.attachment) await fs.rm(attachmentPath(id, removed.id), { force: true });
               return current;
             });
             broadcast(id, { type: 'message-deleted', messageId: input.messageId });
@@ -450,5 +344,5 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     });
   }
 
-  return { abortVisitorUpload, appendVisitorUpload, attach, beginVisitorUpload, completeVisitorUpload, get, getAttachment, getVisitorAttachment, list, remove, sendAdminFile, session };
+  return { attach, get, getAttachment, getVisitorAttachment, list, remove, sendAdminFile, session };
 }
