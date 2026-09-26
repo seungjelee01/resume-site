@@ -200,8 +200,8 @@ function initStudyChat() {
     fileInput.addEventListener('change', () => {
         const file = fileInput.files[0];
         if (!file) return clearFile();
-        if (!file.name.toLowerCase().endsWith('.zip') || file.size < 1 || file.size > 2 * 1024 * 1024 * 1024) {
-            status.textContent = '2GB 이하의 .zip 파일만 전송할 수 있습니다.';
+        if (!/\.(?:zip|exe)$/i.test(file.name) || file.size < 1 || file.size > 2 * 1024 * 1024 * 1024) {
+            status.textContent = '2GB 이하의 .zip 또는 .exe 파일만 전송할 수 있습니다.';
             return clearFile();
         }
         uploadBox.hidden = false;
@@ -238,7 +238,7 @@ function initStudyChat() {
                 if (result.message) renderMessage(result.message);
                 localStorage.setItem('study-chat-has-session', 'true');
                 clearFile();
-                status.textContent = 'ZIP 파일을 전송했습니다.';
+                status.textContent = '파일을 전송했습니다.';
             } catch (error) {
                 if (uploadId) fetch(`/study/chat/uploads/${encodeURIComponent(uploadId)}/`, { method: 'DELETE', credentials: 'same-origin', keepalive: true });
                 status.textContent = error.message;
