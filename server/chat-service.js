@@ -309,7 +309,9 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     const upload = visitorUploads.get(uploadId);
     if (!conversation || !upload || upload.conversationId !== conversation.id) throw new Error('업로드 세션을 찾을 수 없습니다.');
     if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > visitorZipChunkMaxSize) throw new Error('파일 조각의 크기가 올바르지 않습니다.');
-    if (!Number.isSafeInteger(offset) || offset !== upload.received || offset + buffer.length > upload.size) throw new Error('파일 전송 순서가 올바르지 않습니다.');
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset + buffer.length > upload.size) throw new Error('파일 전송 순서가 올바르지 않습니다.');
+    if (offset < upload.received && offset + buffer.length <= upload.received) return { received: upload.received, size: upload.size };
+    if (offset !== upload.received) throw new Error('파일 전송 순서가 올바르지 않습니다.');
     if (offset === 0 && !['504b0304', '504b0506', '504b0708'].includes(buffer.subarray(0, 4).toString('hex'))) throw new Error('올바른 ZIP 파일이 아닙니다.');
     await fs.appendFile(uploadPath(conversation.id, uploadId), buffer);
     upload.received += buffer.length;
