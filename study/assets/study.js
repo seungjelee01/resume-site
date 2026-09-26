@@ -15,19 +15,12 @@ function initStudyChat() {
     const form = document.querySelector('[data-chat-form]');
     const input = document.querySelector('[data-chat-input]');
     const unreadBadge = document.querySelector('[data-chat-unread]');
-    const fileInput = document.querySelector('[data-chat-file]');
-    const uploadBox = document.querySelector('[data-chat-upload]');
-    const uploadName = document.querySelector('[data-chat-upload-name]');
-    const uploadProgress = document.querySelector('[data-chat-upload-progress]');
-    const uploadBar = document.querySelector('[data-chat-upload-bar]');
-    const submitButton = document.querySelector('[data-chat-submit]');
-    if (!panel || !openButton || !closeButton || !status || !messages || !form || !input || !unreadBadge || !fileInput || !uploadBox || !uploadName || !uploadProgress || !uploadBar || !submitButton) return;
+    if (!panel || !openButton || !closeButton || !status || !messages || !form || !input || !unreadBadge) return;
     let socket;
     let reconnectTimer;
     let initialized = false;
     let conversationId = '';
     let adminMessages = [];
-    let uploadId = '';
     const notificationPreferenceKey = 'study-chat-notifications';
 
     const readKey = () => `study-chat-last-read:${conversationId}`;
@@ -162,71 +155,8 @@ function initStudyChat() {
         event.preventDefault();
         form.requestSubmit();
     });
-    const formatFileSize = (size) => size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`;
-    const clearFile = () => {
-        fileInput.value = '';
-        uploadBox.hidden = true;
-        uploadBar.value = 0;
-        uploadId = '';
-    };
-    fileInput.addEventListener('change', () => {
-        const file = fileInput.files[0];
-        if (!file) return clearFile();
-        if (!file.name.toLowerCase().endsWith('.zip') || file.size < 1 || file.size > 1024 * 1024 * 1024) {
-            status.textContent = '1GB 이하의 .zip 파일만 전송할 수 있습니다.';
-            return clearFile();
-        }
-        uploadBox.hidden = false;
-        uploadName.textContent = file.name;
-        uploadProgress.textContent = `${formatFileSize(file.size)} · 전송 대기`;
-    });
-    form.addEventListener('submit', async (event) => {
+    form.addEventListener('submit', (event) => {
         event.preventDefault();
-        const file = fileInput.files[0];
-        if (file) {
-            if (!initialized) await connect();
-            try {
-                submitButton.disabled = true;
-                fileInput.disabled = true;
-                input.disabled = true;
-                status.textContent = '파일 전송을 준비하는 중입니다.';
-                let response = await fetch('/study/chat/uploads/', {
-                    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: file.name, size: file.size }),
-                });
-                let result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.error || '파일 전송을 시작하지 못했습니다.');
-                uploadId = result.uploadId;
-                for (let offset = 0; offset < file.size; offset += result.chunkSize) {
-                    const chunk = file.slice(offset, Math.min(offset + result.chunkSize, file.size));
-                    response = await fetch(`/study/chat/uploads/${encodeURIComponent(uploadId)}/`, {
-                        method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream', 'Upload-Offset': String(offset) }, body: chunk,
-                    });
-                    result = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(result.error || '파일 전송 중 오류가 발생했습니다.');
-                    const percent = Math.round(result.received / result.size * 100);
-                    uploadBar.value = percent;
-                    uploadProgress.textContent = `${formatFileSize(result.received)} / ${formatFileSize(result.size)} · ${percent}%`;
-                }
-                response = await fetch(`/study/chat/uploads/${encodeURIComponent(uploadId)}/complete/`, { method: 'POST', credentials: 'same-origin' });
-                result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.error || '파일 전송을 완료하지 못했습니다.');
-                if (result.message) renderMessage(result.message);
-                localStorage.setItem('study-chat-has-session', 'true');
-                clearFile();
-                status.textContent = 'ZIP 파일을 전송했습니다.';
-            } catch (error) {
-                if (uploadId) fetch(`/study/chat/uploads/${encodeURIComponent(uploadId)}/`, { method: 'DELETE', credentials: 'same-origin', keepalive: true });
-                status.textContent = error.message;
-                uploadProgress.textContent = '전송 실패 · 다시 시도해 주세요.';
-                uploadId = '';
-            } finally {
-                submitButton.disabled = false;
-                fileInput.disabled = false;
-                input.disabled = false;
-            }
-            return;
-        }
         const content = input.value.trim();
         if (!content || socket?.readyState !== WebSocket.OPEN) return;
         socket.send(JSON.stringify({ type: 'message', content }));
