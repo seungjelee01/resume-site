@@ -7,9 +7,9 @@ const idPattern = /^[0-9a-f-]{36}$/i;
 const visitorMessageMaxLength = 1000;
 const adminMessageMaxLength = 5000;
 const adminTextFileMaxSize = 2 * 1024 * 1024;
-const visitorFileMaxSize = 2 * 1024 * 1024 * 1024;
-const visitorFileChunkMaxSize = 8 * 1024 * 1024;
-const visitorFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:zip|exe)$/iu;
+const visitorZipFileMaxSize = 2 * 1024 * 1024 * 1024;
+const visitorZipChunkMaxSize = 8 * 1024 * 1024;
+const visitorZipFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.zip$/iu;
 const textFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.txt$/iu;
 const visitorLabel = (conversation) => conversation.visitorName || `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`;
 
@@ -49,8 +49,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
   const filePath = (id) => path.join(directory, `${id}.json`);
   const attachmentDirectory = (id) => path.join(directory, `${id}.files`);
   const attachmentPath = (id, messageId, attachment) => {
-    const candidate = path.extname(attachment?.name || '').toLowerCase();
-    const extension = ['.zip', '.exe'].includes(candidate) ? candidate : '.txt';
+    const extension = path.extname(attachment?.name || '').toLowerCase() === '.zip' ? '.zip' : '.txt';
     return path.join(attachmentDirectory(id), `${messageId}${extension}`);
   };
   const uploadPath = (id, uploadId) => path.join(attachmentDirectory(id), `.${uploadId}.upload`);
@@ -290,11 +289,8 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     if (!conversation) throw new Error('문의 세션이 만료되었습니다. 채팅창을 다시 열어 주세요.');
     const name = String(input?.name || '').normalize('NFC');
     const size = Number(input?.size);
-    if (!visitorFileNamePattern.test(name) || !Number.isSafeInteger(size) || size < 1 || size > visitorFileMaxSize) throw new Error('2GB 이하의 .zip 또는 .exe 파일만 전송할 수 있습니다.');
-    const extension = path.extname(name).toLowerCase();
-    const visitorFiles = conversation.messages.filter((message) => message.sender === 'visitor' && message.attachment);
-    if (extension === '.zip' && visitorFiles.filter((message) => path.extname(message.attachment.name).toLowerCase() === '.zip').length >= 2) throw new Error('한 문의에서는 ZIP 파일을 두 개까지 전송할 수 있습니다.');
-    if (extension === '.exe' && visitorFiles.some((message) => path.extname(message.attachment.name).toLowerCase() === '.exe')) throw new Error('한 문의에서는 EXE 파일을 한 개까지 전송할 수 있습니다.');
+    if (!visitorZipFileNamePattern.test(name) || !Number.isSafeInteger(size) || size < 1 || size > visitorZipFileMaxSize) throw new Error('2GB 이하의 .zip 파일만 전송할 수 있습니다.');
+    if (conversation.messages.filter((message) => message.sender === 'visitor' && message.attachment?.name?.toLowerCase().endsWith('.zip')).length >= 2) throw new Error('한 문의에서는 ZIP 파일을 두 개까지 전송할 수 있습니다.');
     if ([...visitorUploads.values()].some((upload) => upload.conversationId === conversation.id)) throw new Error('이미 전송 중인 파일이 있습니다.');
     if (visitorUploads.size >= 3) throw new Error('다른 파일을 처리 중입니다. 잠시 후 다시 시도하세요.');
     const disk = await fs.statfs(directory);
@@ -305,24 +301,18 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     await fs.chmod(attachmentDirectory(conversation.id), 0o700);
     await fs.writeFile(uploadPath(conversation.id, uploadId), Buffer.alloc(0), { mode: 0o640, flag: 'wx' });
     visitorUploads.set(uploadId, { conversationId: conversation.id, name, size, received: 0, updatedAt: Date.now() });
-    return { uploadId, chunkSize: visitorFileChunkMaxSize };
+    return { uploadId, chunkSize: visitorZipChunkMaxSize };
   }
 
   async function appendVisitorUpload(cookieHeader, uploadId, offset, buffer) {
     const conversation = await authenticate(cookieHeader);
     const upload = visitorUploads.get(uploadId);
     if (!conversation || !upload || upload.conversationId !== conversation.id) throw new Error('업로드 세션을 찾을 수 없습니다.');
-    if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > visitorFileChunkMaxSize) throw new Error('파일 조각의 크기가 올바르지 않습니다.');
+    if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > visitorZipChunkMaxSize) throw new Error('파일 조각의 크기가 올바르지 않습니다.');
     if (!Number.isSafeInteger(offset) || offset < 0 || offset + buffer.length > upload.size) throw new Error('파일 전송 순서가 올바르지 않습니다.');
     if (offset < upload.received && offset + buffer.length <= upload.received) return { received: upload.received, size: upload.size };
     if (offset !== upload.received) throw new Error('파일 전송 순서가 올바르지 않습니다.');
-    if (offset === 0) {
-      const signature = buffer.subarray(0, 4).toString('hex');
-      const valid = upload.name.toLowerCase().endsWith('.zip')
-        ? ['504b0304', '504b0506', '504b0708'].includes(signature)
-        : signature.startsWith('4d5a');
-      if (!valid) throw new Error('파일 확장자와 실제 형식이 일치하지 않습니다.');
-    }
+    if (offset === 0 && !['504b0304', '504b0506', '504b0708'].includes(buffer.subarray(0, 4).toString('hex'))) throw new Error('올바른 ZIP 파일이 아닙니다.');
     await fs.appendFile(uploadPath(conversation.id, uploadId), buffer);
     upload.received += buffer.length;
     upload.updatedAt = Date.now();
