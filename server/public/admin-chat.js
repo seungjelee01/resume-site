@@ -49,13 +49,13 @@ if (panel && messages && status && form && input && fileInput && selectedFile &&
     const time = document.createElement('time');
     time.textContent = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt));
     item.append(sender, content, time);
-    if (message.sender === 'admin') {
+    if (message.sender === 'admin' || message.attachment) {
       const deleteButton = document.createElement('button');
       deleteButton.type = 'button';
       deleteButton.className = 'admin-chat-message-delete';
       deleteButton.dataset.deleteMessage = message.id;
       deleteButton.textContent = '삭제';
-      deleteButton.setAttribute('aria-label', '이 관리자 메시지 삭제');
+      deleteButton.setAttribute('aria-label', '이 메시지 삭제');
       item.append(deleteButton);
     }
     messages.append(item);
@@ -127,7 +127,7 @@ if (panel && messages && status && form && input && fileInput && selectedFile &&
   });
   messages.addEventListener('click', (event) => {
     const button = event.target.closest('[data-delete-message]');
-    if (!button || socket?.readyState !== WebSocket.OPEN || !window.confirm('이 답변을 삭제할까요?')) return;
+    if (!button || socket?.readyState !== WebSocket.OPEN || !window.confirm('이 메시지와 첨부 파일을 삭제할까요?')) return;
     button.disabled = true;
     socket.send(JSON.stringify({ type: 'delete-message', messageId: button.dataset.deleteMessage }));
   });
