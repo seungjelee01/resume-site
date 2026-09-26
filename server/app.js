@@ -649,6 +649,7 @@ function renderMarkdown(source) {
     allowedSchemes: ['http', 'https', 'mailto'],
   });
   return html
+    .replace(/<a href="[^"]+"><img([^>]*)><\/a>/g, '<img$1>')
     .replaceAll('<table>', '<div class="study-table-scroll" role="region" aria-label="표 스크롤 영역" tabindex="0"><table>')
     .replaceAll('</table>', '</table></div>');
 }
@@ -735,7 +736,7 @@ function studyLayout({ title = '', description = '', content, posts, isHome = fa
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
     <title>${pageTitle}</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#ffffff">
-    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260920-4"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260920-2" defer></script></head>
+    <link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/study/assets/study.css?v=20260926-1"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="/study/assets/study.js?v=20260920-2" defer></script></head>
     <body class="study-page"><a class="skip-link" href="#study-content">본문으로 바로가기</a><header class="mobile-study-header"><button class="sidebar-open" type="button" aria-expanded="false" aria-controls="study-sidebar" aria-label="탐색 메뉴 열기" data-sidebar-open>☰</button><a href="/study/">Tech Notes</a></header>
     ${studySidebar(posts)}<button class="sidebar-overlay" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-overlay hidden></button><main class="study-main" id="study-content" tabindex="-1">${content}</main><button class="study-chat-open" type="button" aria-label="Seungje Lee에게 문의하기" aria-expanded="false" aria-controls="study-chat" data-chat-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>문의</span><b data-chat-unread hidden>0</b></button><section class="study-chat" id="study-chat" aria-label="Seungje Lee에게 문의하기" data-chat hidden><header><div><strong>Seungje Lee에게 문의하기</strong><span data-chat-status>연결 준비 중</span></div><button type="button" aria-label="채팅 닫기" data-chat-close>×</button></header><ol aria-live="polite" data-chat-messages></ol><p class="study-chat-privacy">문의 내용은 최근 활동일로부터 90일간 보관됩니다. <a href="/privacy">자세히</a></p><form data-chat-form><label for="chat-message">메시지</label><textarea id="chat-message" maxlength="1000" rows="2" required data-chat-input></textarea><button type="submit">전송</button></form></section><dialog class="study-settings" data-study-settings><form method="dialog"><div class="study-settings-title"><h2>설정</h2><button type="submit" aria-label="설정 닫기">×</button></div><label>테마<select data-study-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><button class="study-settings-done" type="submit">완료</button></form></dialog></body></html>`;
 }
@@ -1432,7 +1433,7 @@ function editor(post = {}) {
   const isEdit = Boolean(post.filename);
   const existingFiles = (post.attachmentFiles || []).map((filename) => {
     const isImage = imageExtensions.has(path.extname(filename).toLowerCase());
-    const imageMarkdown = isImage ? `<small class="attachment-markdown"><span>본문 삽입</span><button type="button" data-copy-markdown title="Markdown 복사"><code>[![설명](/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/)](/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/)</code><span data-copy-label aria-live="polite">복사</span></button></small>` : '';
+    const imageMarkdown = isImage ? `<small class="attachment-markdown"><span>본문 삽입</span><button type="button" data-copy-markdown title="Markdown 복사"><code>![설명](/study/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/)</code><span data-copy-label aria-live="polite">복사</span></button></small>` : '';
     return `<li><div><code>${escapeHtml(filename)}</code>${imageMarkdown}</div><form method="post" action="/admin/edit/${encodeURIComponent(post.slug)}/files/${encodeURIComponent(filename)}/delete" onsubmit="return confirm('이 첨부 파일을 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form></li>`;
   }).join('');
   const attachmentList = existingFiles ? `<div class="attached-files"><strong>현재 첨부</strong><ul>${existingFiles}</ul></div>` : '';
