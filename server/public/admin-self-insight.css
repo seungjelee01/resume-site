@@ -389,3 +389,23 @@
     color: var(--muted);
     font-size: 12px;
 }
+
+.self-profile-card,
+.self-profile-evidence,
+.self-profile-evidence ul,
+.self-profile-evidence li,
+.self-profile-evidence li a {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.self-profile-card {
+    overflow: hidden;
+}
+
+.self-profile-evidence,
+.self-profile-evidence ul,
+.self-profile-evidence li,
+.self-profile-evidence li a {
+    width: 100%;
+}
