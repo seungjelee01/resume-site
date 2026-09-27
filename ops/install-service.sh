@@ -30,6 +30,7 @@ sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/anal
 sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/journal"
 sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/reading"
 sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/self-insight"
+sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/practice"
 sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/quizzes"
 
 if [[ ! -e "$deploy_root/shared/resume.env" ]]; then
