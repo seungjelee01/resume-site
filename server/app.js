@@ -15,6 +15,7 @@ import { createAnalyticsService } from './analytics-service.js';
 import { createChatService } from './chat-service.js';
 import { createJournalService, JOURNAL_TAGS } from './journal-service.js';
 import { createReadingService, READING_CATEGORIES, READING_STATUSES, READING_TAGS } from './reading-service.js';
+import { createSelfInsightService, SELF_INSIGHT_CATEGORIES, SELF_INSIGHT_PROFILE_FIELDS, SELF_INSIGHT_STAR_FIELDS } from './self-insight-service.js';
 import { createQuizService } from './quiz-service.js';
 import { loadDiskStatus, loadServiceStatuses } from './service-status.js';
 
@@ -66,6 +67,11 @@ const quizDir = process.env.QUIZ_DIR
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'quizzes')
     : path.join(rootDir, '_quizzes');
+const selfInsightDir = process.env.SELF_INSIGHT_DIR
+  ? path.resolve(process.env.SELF_INSIGHT_DIR)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'self-insight')
+    : path.join(rootDir, '_self_insight');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
@@ -85,6 +91,7 @@ const commentRateLimits = new Map();
 const app = express();
 const journalService = createJournalService(journalDir);
 const readingService = createReadingService(readingDir);
+const selfInsightService = createSelfInsightService(selfInsightDir);
 const quizService = createQuizService(quizDir);
 const attachmentNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|pdf|png|jpe?g|gif|webp)$/iu;
 const privateFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp)$/iu;
@@ -935,6 +942,35 @@ function readingSearchText(record) {
   return [record.title, record.author, record.publisher, record.category, ...readingSections.map(([field]) => record[field]), ...(record.tags || [])].join(' ').toLocaleLowerCase('ko');
 }
 
+function selfInsightProfileForm(profile) {
+  const fields = SELF_INSIGHT_PROFILE_FIELDS.map(([field, label]) => `<label>${label} <small>선택</small><textarea name="${field}" maxlength="${field === 'oneLineIntro' ? 200 : 5000}" rows="${field === 'oneLineIntro' ? 3 : 6}">${escapeHtml(profile[field] || '')}</textarea></label>`).join('');
+  return `<form class="self-insight-editor" method="post" action="/admin/self-insight/profile/edit">${fields}<div class="actions"><button class="button primary" type="submit">변경사항 저장</button><a class="button" href="/admin/self-insight/">취소</a></div></form>`;
+}
+
+function selfInsightExperienceForm(record, action, submitLabel) {
+  const value = (field) => escapeHtml(record[field] || '');
+  const categories = SELF_INSIGHT_CATEGORIES.map((category) => `<option value="${category}"${record.category === category ? ' selected' : ''}>${category}</option>`).join('');
+  const relatedFields = SELF_INSIGHT_PROFILE_FIELDS.map(([field, label]) => `<label><input type="checkbox" name="relatedFields" value="${field}"${record.relatedFields?.includes(field) ? ' checked' : ''}><span>${label}</span></label>`).join('');
+  const starFields = SELF_INSIGHT_STAR_FIELDS.map(([field, label]) => `<label>${label} <small>필수</small><textarea name="${field}" maxlength="5000" rows="6" required>${value(field)}</textarea></label>`).join('');
+  return `<form class="self-insight-editor" method="post" action="${action}"><div class="self-insight-fields"><label>경험 제목<input name="title" maxlength="150" value="${value('title')}" required></label><label>분류<select name="category" required><option value="">선택</option>${categories}</select></label><label>시작일 <small>선택</small><input type="date" name="startDate" value="${value('startDate')}"></label><label>종료일 <small>선택</small><input type="date" name="endDate" value="${value('endDate')}"></label></div><label>태그 <small>쉼표로 구분 · 최대 10개</small><input name="tags" maxlength="400" value="${escapeHtml((record.tags || []).join(', '))}" placeholder="Oracle, 문제 해결, 협업"></label><fieldset class="self-insight-related"><legend>연결할 자기 이해 항목 <small>선택</small></legend><div>${relatedFields}</div></fieldset>${starFields}<div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/self-insight/">취소</a></div></form>`;
+}
+
+function selfInsightSearchText(record) {
+  return [record.title, record.category, record.startDate, record.endDate, ...SELF_INSIGHT_STAR_FIELDS.map(([field]) => record[field]), ...(record.tags || [])].join(' ').toLocaleLowerCase('ko');
+}
+
+function selfInsightPeriod(record) {
+  if (!record.startDate && !record.endDate) return '기간 미입력';
+  return `${record.startDate || '시작일 미입력'} → ${record.endDate || '진행 중'}`;
+}
+
+function selfInsightCopyText(record) {
+  const lines = [record.title, `분류: ${record.category}`, `기간: ${selfInsightPeriod(record)}`];
+  if (record.tags?.length) lines.push(`태그: ${record.tags.join(', ')}`);
+  for (const [field, label] of SELF_INSIGHT_STAR_FIELDS) lines.push('', `${label}`, record[field]);
+  return lines.join('\n');
+}
+
 function quizForm(question, posts, action, submitLabel) {
   const postOptions = posts.map((post) => `<option value="${escapeHtml(post.slug)}"${question.relatedSlug === post.slug ? ' selected' : ''}>${escapeHtml(post.title)}</option>`).join('');
   return `<form class="quiz-editor editor" method="post" action="${action}"><label>문제 설명<textarea name="prompt" maxlength="500" rows="5" required>${escapeHtml(question.prompt || '')}</textarea></label><label>허용 정답 <small>한 줄에 하나씩 입력하며 표기가 다른 정답도 판정과 정답 안내에 사용합니다.</small><textarea name="answers" maxlength="1000" rows="5" required>${escapeHtml((question.answers || []).join('\n'))}</textarea></label><div class="field-row"><label>카테고리<input name="category" maxlength="40" value="${escapeHtml(question.category || 'Oracle')}" required></label><label>관련 글<select name="relatedSlug"><option value="">선택하지 않음</option>${postOptions}</select></label></div><label class="quiz-active"><input type="checkbox" name="active"${question.active !== false ? ' checked' : ''}><span>Tech Notes 퀴즈에 공개</span></label><div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/quizzes/">취소</a></div></form>`;
@@ -949,6 +985,7 @@ function adminLayout(title, content, email, activeSection = '') {
     chats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><circle cx="9" cy="10" r="1"/><circle cx="12" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg>',
     files: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
     aiUsers: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 8h5M18.5 5.5v5"/></svg>',
+    selfInsight: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 4l2-2M6 4 4 2"/></svg>',
     journal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5z"/><path d="M9 3v18M12 8h4M12 12h4"/></svg>',
     reading: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v18H7.5A3.5 3.5 0 0 0 4 23z"/><path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v18h4.5A3.5 3.5 0 0 1 20 23z"/></svg>',
     quizzes: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 1 1 3.4 2c-.8.45-1.2.9-1.2 2M12 17h.01"/></svg>',
@@ -967,7 +1004,7 @@ function adminLayout(title, content, email, activeSection = '') {
   const publicSelected = studyAccess === 'public' ? ' selected' : '';
   const googleAccessChecked = (siteSettingsCache?.studyGoogleAccess ?? defaultSiteSettings.studyGoogleAccess) ? ' checked' : '';
   const pageTitle = title === '대시보드' ? 'Administration Console · Seungje Lee' : `${escapeHtml(title)} · Administration Console`;
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260920-1"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260918-1"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-reading.css?v=20260902-2"><script src="/admin/assets/admin-settings.js?v=20260911-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}${navItem('aiUsers', '/admin/ai-chat-users/', '사용자 관리')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('journal', '/admin/journal/', '일기')}${navItem('reading', '/admin/reading/', '독서')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-notifications"><h3>문의 알림</h3><label><input type="checkbox" data-admin-chat-notifications><span>새 문의를 데스크톱 알림으로 받기</span></label><small data-admin-chat-notification-status>브라우저가 열려 있을 때만 알림을 받을 수 있습니다.</small></section><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label>공개 방식<select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label><input type="hidden" name="studyGoogleAccess" value="false"><label><input type="checkbox" name="studyGoogleAccess" value="true"${googleAccessChecked}> Google 로그인 사용자 접근 허용</label>${studyShareToken ? '<small>공유 링크 모드에서 이 옵션을 끄면 로그인 사용자도 공유 링크가 필요합니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260920-1"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260918-1"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-reading.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-self-insight.css?v=20260927-1"><script src="/admin/assets/admin-self-insight.js?v=20260927-1" defer></script><script src="/admin/assets/admin-settings.js?v=20260911-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}${navItem('aiUsers', '/admin/ai-chat-users/', '사용자 관리')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('selfInsight', '/admin/self-insight/', '자기 이해')}${navItem('journal', '/admin/journal/', '일기')}${navItem('reading', '/admin/reading/', '독서')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-notifications"><h3>문의 알림</h3><label><input type="checkbox" data-admin-chat-notifications><span>새 문의를 데스크톱 알림으로 받기</span></label><small data-admin-chat-notification-status>브라우저가 열려 있을 때만 알림을 받을 수 있습니다.</small></section><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label>공개 방식<select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label><input type="hidden" name="studyGoogleAccess" value="false"><label><input type="checkbox" name="studyGoogleAccess" value="true"${googleAccessChecked}> Google 로그인 사용자 접근 허용</label>${studyShareToken ? '<small>공유 링크 모드에서 이 옵션을 끄면 로그인 사용자도 공유 링크가 필요합니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
 }
 
 app.post('/admin/settings/study-access', async (req, res, next) => {
@@ -986,19 +1023,20 @@ app.post('/admin/settings/study-access', async (req, res, next) => {
 
 app.get('/admin/', async (_req, res, next) => {
   try {
-    const [posts, files, journals, readings, serviceStatuses, disk] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list(), readingService.list(), loadServiceStatuses(), loadDiskStatus()]);
+    const [posts, files, journals, readings, selfProfile, selfExperiences, serviceStatuses, disk] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list(), readingService.list(), selfInsightService.loadProfile(), selfInsightService.listExperiences(), loadServiceStatuses(), loadDiskStatus()]);
     const memory = process.memoryUsage();
     const today = todayInSeoul();
     const wroteToday = journals.some((journal) => journal.date === today);
     const journalHref = wroteToday ? `/admin/journal/${today}/` : '/admin/journal/new';
     const completedThisMonth = readings.filter((book) => book.status === 'completed' && book.completedDate?.startsWith(today.slice(0, 7))).length;
+    const selfProfileCount = SELF_INSIGHT_PROFILE_FIELDS.filter(([field]) => selfProfile[field]).length;
     const serviceStatusLabels = { running: '실행 중', stopped: '중지', unknown: '확인 불가' };
     const serviceRows = serviceStatuses.map((service) => `<tr><td><strong>${escapeHtml(service.name)}</strong></td><td><span class="service-state is-${service.status}">${serviceStatusLabels[service.status]}</span></td><td>${service.pid ?? '—'}</td><td>${service.cpu === null ? '—' : `${service.cpu.toFixed(1)}%`}</td><td>${service.memory === null ? '—' : formatFileSize(service.memory)}</td><td>${service.uptime === null ? '—' : formatUptime(service.uptime)}</td></tr>`).join('');
     const serviceStatusContent = `<section class="managed-services"><header><div><h2>서비스 상태</h2><p>허용된 애플리케이션 서비스만 표시합니다.</p></div></header><div class="managed-services-table"><table><thead><tr><th>서비스</th><th>상태</th><th>PID</th><th>CPU</th><th>메모리</th><th>가동 시간</th></tr></thead><tbody>${serviceRows}</tbody></table></div></section>`;
     const diskContent = disk
       ? `<dl class="resource-status disk-status"><div><dt>디스크 사용</dt><dd>${formatGigabytes(disk.used)}</dd></div><div><dt>디스크 여유</dt><dd>${formatGigabytes(disk.available)}</dd></div></dl><small class="disk-total">전체 용량 ${formatGigabytes(disk.total)}</small>`
       : '<strong>확인 불가</strong><small>디스크 정보를 불러오지 못했습니다.</small>';
-    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 상태</span><dl class="memory-status"><div><dt>Node.js 사용</dt><dd>${formatFileSize(memory.rss)}</dd></div><div><dt>시스템 여유</dt><dd>${formatGigabytes(os.freemem())}</dd></div></dl></section><section class="dashboard-card"><span>디스크 상태</span>${diskContent}</section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section><section class="dashboard-card"><span>이번 달 독서</span><strong>${completedThisMonth ? `목표 달성 · ${completedThisMonth}권` : '목표까지 1권'}</strong><a href="/admin/reading/">독서 기록 보기 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
+    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 상태</span><dl class="memory-status"><div><dt>Node.js 사용</dt><dd>${formatFileSize(memory.rss)}</dd></div><div><dt>시스템 여유</dt><dd>${formatGigabytes(os.freemem())}</dd></div></dl></section><section class="dashboard-card"><span>디스크 상태</span>${diskContent}</section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>자기 이해</span><strong>${selfProfileCount}/${SELF_INSIGHT_PROFILE_FIELDS.length} 항목 · ${selfExperiences.length}개 경험</strong><a href="/admin/self-insight/">기록 관리 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section><section class="dashboard-card"><span>이번 달 독서</span><strong>${completedThisMonth ? `목표 달성 · ${completedThisMonth}권` : '목표까지 1권'}</strong><a href="/admin/reading/">독서 기록 보기 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
     res.send(adminLayout('대시보드', content.replace('<section class="server-details">', `${serviceStatusContent}<section class="server-details">`), res.locals.adminEmail, 'dashboard'));
   } catch (error) { next(error); }
 });
@@ -1034,6 +1072,101 @@ app.post('/admin/api/ai-chat/users/:id/delete', async (req, res) => {
 app.get('/admin/ai-chat-users/', (_req, res) => {
   const content = `<div class="admin-title"><div><p>AI CHAT ACCESS</p><h1>사용자 관리</h1></div></div><p class="ai-users-guide">Google 로그인 사용자의 AI Chat 이용을 승인·중지하거나 계정 데이터를 삭제할 수 있습니다.</p><section class="managed-services ai-users-panel"><header><div><h2>Google 로그인 사용자</h2><p data-ai-users-status>사용자 정보를 불러오는 중입니다.</p></div><button class="button" type="button" data-ai-users-refresh>새로고침</button></header><div class="managed-services-table" data-ai-users-table hidden><table><thead><tr><th>이름</th><th>이메일</th><th>상태</th><th>역할</th><th>가입 일시</th><th>오늘 요청</th><th>관리</th></tr></thead><tbody data-ai-users-body></tbody></table></div><div class="ai-users-empty" data-ai-users-empty hidden></div></section><p class="ai-users-privacy">Google 계정 식별자, 세션·OAuth·CSRF 토큰과 대화 내용은 이 화면에 표시하지 않습니다.</p><script src="/admin/assets/admin-ai-chat-users.js?v=20260914-1" defer></script>`;
   res.send(adminLayout('사용자 관리', content, res.locals.adminEmail, 'aiUsers'));
+});
+
+app.get('/admin/self-insight/', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const [profile, allExperiences] = await Promise.all([selfInsightService.loadProfile(), selfInsightService.listExperiences()]);
+    const query = String(req.query.q || '').trim().slice(0, 100);
+    const category = SELF_INSIGHT_CATEGORIES.includes(String(req.query.category || '')) ? String(req.query.category) : '';
+    const tag = String(req.query.tag || '').trim().slice(0, 30);
+    const experiences = allExperiences.filter((record) => (!query || selfInsightSearchText(record).includes(query.toLocaleLowerCase('ko'))) && (!category || record.category === category) && (!tag || record.tags.includes(tag)));
+    const filled = SELF_INSIGHT_PROFILE_FIELDS.filter(([field]) => profile[field]).length;
+    const profileCards = SELF_INSIGHT_PROFILE_FIELDS.map(([field, label]) => {
+      const content = profile[field] || '';
+      return `<section class="self-profile-card"><header><h2>${label}</h2><button class="button self-copy" type="button" data-copy-target="self-profile-${field}"${content ? '' : ' disabled'}>복사</button></header><p id="self-profile-${field}"${content ? '' : ' class="is-empty"'}>${escapeHtml(content || '아직 작성하지 않았습니다.')}</p></section>`;
+    }).join('');
+    const categories = SELF_INSIGHT_CATEGORIES.map((item) => `<option value="${item}"${item === category ? ' selected' : ''}>${item}</option>`).join('');
+    const allTags = [...new Set(allExperiences.flatMap((record) => record.tags))].sort((a, b) => a.localeCompare(b, 'ko'));
+    const tags = allTags.map((item) => `<option value="${escapeHtml(item)}"${item === tag ? ' selected' : ''}>${escapeHtml(item)}</option>`).join('');
+    const cards = experiences.map((record) => {
+      const related = record.relatedFields.map((field) => SELF_INSIGHT_PROFILE_FIELDS.find(([key]) => key === field)?.[1]).filter(Boolean);
+      return `<article class="self-experience-card"><header><span>${escapeHtml(record.category)}</span><small>${escapeHtml(selfInsightPeriod(record))}</small></header><h2><a href="/admin/self-insight/experiences/${record.id}/">${escapeHtml(record.title)}</a></h2><p>${escapeHtml(record.action.slice(0, 160))}${record.action.length > 160 ? '…' : ''}</p><div>${record.tags.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}${related.map((item) => `<span class="is-related">${escapeHtml(item)}</span>`).join('')}</div></article>`;
+    }).join('');
+    const reset = query || category || tag ? '<a class="button" href="/admin/self-insight/">초기화</a>' : '';
+    const content = `<div class="admin-title"><div><p>PRIVATE SELF INSIGHT</p><h1>자기 이해</h1></div><a class="button primary" href="/admin/self-insight/experiences/new">경험 추가</a></div><section class="self-profile"><header><div><h2>기본 프로필</h2><p>${filled}/${SELF_INSIGHT_PROFILE_FIELDS.length}개 항목 작성 · 자소서와 면접 답변의 기준이 되는 내용을 관리합니다.</p></div><a class="button" href="/admin/self-insight/profile/edit">프로필 수정</a></header><div class="self-profile-grid">${profileCards}</div></section><section class="self-experiences"><header><div><h2>근거 경험</h2><p>장점과 성향을 뒷받침할 경험을 STAR 형식으로 축적합니다.</p></div></header><form class="self-insight-filter" method="get"><label>검색<input type="search" name="q" value="${escapeHtml(query)}" placeholder="제목, 태그 또는 STAR 내용"></label><label>분류<select name="category"><option value="">전체</option>${categories}</select></label><label>태그<select name="tag"><option value="">전체</option>${tags}</select></label><button class="button" type="submit">찾기</button>${reset}</form><p class="self-insight-count">${experiences.length}개의 경험</p><div class="self-experience-list">${cards || '<p class="self-insight-empty">조건에 맞는 경험이 없습니다.</p>'}</div></section>`;
+    res.send(adminLayout('자기 이해', content, res.locals.adminEmail, 'selfInsight'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/self-insight/profile/edit', async (_req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const profile = await selfInsightService.loadProfile();
+    const content = `<div class="admin-title"><div><p>SELF PROFILE</p><h1>기본 프로필 수정</h1></div></div>${selfInsightProfileForm(profile)}`;
+    res.send(adminLayout('기본 프로필 수정', content, res.locals.adminEmail, 'selfInsight'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/self-insight/profile/edit', async (req, res, next) => {
+  try {
+    await selfInsightService.saveProfile(req.body);
+    res.redirect(303, '/admin/self-insight/');
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/self-insight/experiences/new', (_req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const content = `<div class="admin-title"><div><p>NEW EXPERIENCE</p><h1>근거 경험 추가</h1></div></div>${selfInsightExperienceForm({ category: '', tags: [], relatedFields: [] }, '/admin/self-insight/experiences/new', '저장')}`;
+  res.send(adminLayout('근거 경험 추가', content, res.locals.adminEmail, 'selfInsight'));
+});
+
+app.post('/admin/self-insight/experiences/new', async (req, res, next) => {
+  try {
+    const record = await selfInsightService.saveExperience(req.body);
+    res.redirect(303, `/admin/self-insight/experiences/${record.id}/`);
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/self-insight/experiences/:id/', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const record = await selfInsightService.loadExperience(req.params.id);
+    if (!record) return res.status(404).send('Not found');
+    const related = record.relatedFields.map((field) => SELF_INSIGHT_PROFILE_FIELDS.find(([key]) => key === field)?.[1]).filter(Boolean);
+    const tags = [...record.tags.map((item) => `<span>${escapeHtml(item)}</span>`), ...related.map((item) => `<span class="is-related">${escapeHtml(item)}</span>`)].join('');
+    const sections = SELF_INSIGHT_STAR_FIELDS.map(([field, label]) => `<section><h2>${label}</h2><p>${escapeHtml(record[field])}</p></section>`).join('');
+    const copySource = `<pre id="self-experience-copy" hidden>${escapeHtml(selfInsightCopyText(record))}</pre>`;
+    const content = `<div class="admin-title"><div><p>${escapeHtml(record.category)} · ${escapeHtml(selfInsightPeriod(record))}</p><h1>${escapeHtml(record.title)}</h1></div><div class="self-title-actions"><button class="button self-copy" type="button" data-copy-target="self-experience-copy">전체 복사</button><a class="button" href="/admin/self-insight/experiences/${record.id}/edit">수정</a></div></div><article class="self-experience-entry"><div class="self-experience-tags">${tags}</div>${sections}</article>${copySource}<form class="delete-form" method="post" action="/admin/self-insight/experiences/${record.id}/delete" onsubmit="return confirm('이 경험 기록을 삭제할까요? 삭제 후 복구할 수 없습니다.')"><button class="button danger" type="submit">경험 삭제</button></form>`;
+    res.send(adminLayout(record.title, content, res.locals.adminEmail, 'selfInsight'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/self-insight/experiences/:id/edit', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const record = await selfInsightService.loadExperience(req.params.id);
+    if (!record) return res.status(404).send('Not found');
+    const content = `<div class="admin-title"><div><p>${escapeHtml(record.category)}</p><h1>근거 경험 수정</h1></div></div>${selfInsightExperienceForm(record, `/admin/self-insight/experiences/${record.id}/edit`, '변경사항 저장')}`;
+    res.send(adminLayout('근거 경험 수정', content, res.locals.adminEmail, 'selfInsight'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/self-insight/experiences/:id/edit', async (req, res, next) => {
+  try {
+    const record = await selfInsightService.saveExperience(req.body, req.params.id);
+    if (!record) return res.status(404).send('Not found');
+    res.redirect(303, `/admin/self-insight/experiences/${record.id}/`);
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/self-insight/experiences/:id/delete', async (req, res, next) => {
+  try {
+    if (!await selfInsightService.loadExperience(req.params.id)) return res.status(404).send('Not found');
+    await selfInsightService.removeExperience(req.params.id);
+    res.redirect(303, '/admin/self-insight/');
+  } catch (error) { next(error); }
 });
 
 app.get('/admin/reading/', async (req, res, next) => {

@@ -1,0 +1,325 @@
+.self-profile,
+.self-experiences,
+.self-experience-entry {
+    padding: 22px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+}
+
+.self-profile > header,
+.self-experiences > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.self-profile h2,
+.self-experiences h2 {
+    margin: 0;
+    color: var(--ink);
+    font-size: 18px;
+}
+
+.self-profile header p,
+.self-experiences header p {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.self-profile-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.self-profile-card {
+    min-width: 0;
+    padding: 17px;
+    border: 1px solid var(--line);
+    background: var(--surface-muted);
+}
+
+.self-profile-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.self-profile-card h2 {
+    font-size: 15px;
+}
+
+.self-profile-card p,
+.self-experience-entry p {
+    margin: 12px 0 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.self-profile-card p.is-empty {
+    color: var(--muted);
+}
+
+.self-copy {
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.self-copy.is-copied {
+    border-color: #4d9465;
+    color: #39744d;
+}
+
+.self-experiences {
+    margin-top: 18px;
+}
+
+.self-insight-filter {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 170px 170px auto auto;
+    align-items: end;
+    gap: 10px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    background: var(--surface-muted);
+}
+
+.self-insight-filter label,
+.self-insight-editor > label,
+.self-insight-fields label {
+    display: grid;
+    gap: 7px;
+    color: var(--ink);
+    font-weight: 650;
+}
+
+.self-insight-filter select,
+.self-insight-editor select {
+    width: 100%;
+    min-height: 45px;
+    padding: 10px 12px;
+    border: 1px solid var(--line-strong);
+    color: var(--text);
+    background: var(--surface);
+    font: inherit;
+}
+
+.self-insight-count {
+    margin: 20px 0 12px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.self-experience-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.self-experience-card {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+}
+
+.self-experience-card header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.self-experience-card h2 {
+    margin: 12px 0 8px;
+    font-size: 18px;
+    line-height: 1.45;
+}
+
+.self-experience-card h2 a {
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.self-experience-card h2 a:hover {
+    color: var(--accent);
+}
+
+.self-experience-card p {
+    display: -webkit-box;
+    overflow: hidden;
+    margin: 0 0 14px;
+    color: var(--muted);
+    white-space: pre-wrap;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+}
+
+.self-experience-card > div,
+.self-experience-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.self-experience-card > div span,
+.self-experience-tags span {
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    font-size: 11px;
+}
+
+.self-experience-card > div span.is-related,
+.self-experience-tags span.is-related {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--ink) 8%, var(--surface));
+}
+
+.self-insight-empty {
+    grid-column: 1 / -1;
+    padding: 40px 20px;
+    border: 1px dashed var(--line-strong);
+    color: var(--muted);
+    text-align: center;
+}
+
+.self-insight-editor {
+    display: grid;
+    gap: 22px;
+}
+
+.self-insight-editor small,
+.self-insight-related small {
+    color: var(--muted);
+    font-weight: 400;
+}
+
+.self-insight-editor textarea {
+    min-height: 120px;
+    font: 14px/1.75 var(--sans);
+}
+
+.self-insight-fields {
+    display: grid;
+    grid-template-columns: minmax(240px, 2fr) 170px 150px 150px;
+    gap: 16px;
+}
+
+.self-insight-related {
+    margin: 0;
+    padding: 16px;
+    border: 1px solid var(--line);
+}
+
+.self-insight-related legend {
+    padding: 0 5px;
+    color: var(--ink);
+    font-weight: 650;
+}
+
+.self-insight-related > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.self-insight-related label {
+    cursor: pointer;
+}
+
+.self-insight-related input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.self-insight-related span {
+    display: inline-flex;
+    padding: 7px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    color: var(--muted);
+}
+
+.self-insight-related input:checked + span {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.self-insight-related input:focus-visible + span {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.self-title-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.self-experience-tags {
+    margin-bottom: 22px;
+}
+
+.self-experience-entry section + section {
+    margin-top: 26px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+}
+
+.self-experience-entry h2 {
+    margin: 0;
+    color: var(--ink);
+    font-size: 17px;
+}
+
+@media (max-width: 1200px) {
+    .self-insight-filter {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .self-insight-filter label:first-child {
+        grid-column: 1 / -1;
+    }
+
+    .self-insight-filter > .button {
+        width: 100%;
+    }
+
+    .self-insight-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 700px) {
+    .self-profile,
+    .self-experiences,
+    .self-experience-entry {
+        padding: 16px;
+    }
+
+    .self-profile > header,
+    .self-experiences > header {
+        display: grid;
+    }
+
+    .self-profile-grid,
+    .self-experience-list,
+    .self-insight-filter,
+    .self-insight-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .self-insight-filter label:first-child {
+        grid-column: auto;
+    }
+}

@@ -14,6 +14,7 @@ cd "$repo_root"
 [[ -z $(git status --porcelain) ]] || { echo "커밋하지 않은 변경사항이 있습니다." >&2; git status --short; exit 1; }
 
 npm run check
+npm test
 git push origin "$branch"
 
 local_sha=$(git rev-parse HEAD)
@@ -27,11 +28,12 @@ if [[ -L "$deploy_root/current" ]]; then
   previous_target=$(readlink -f "$deploy_root/current")
 fi
 
-mkdir -p "$release_dir" "$deploy_root/shared/study" "$deploy_root/shared/study-files" "$deploy_root/shared/private-files" "$deploy_root/shared/comments" "$deploy_root/shared/chats" "$deploy_root/shared/analytics" "$deploy_root/shared/journal" "$deploy_root/shared/reading" "$deploy_root/shared/quizzes"
+mkdir -p "$release_dir" "$deploy_root/shared/study" "$deploy_root/shared/study-files" "$deploy_root/shared/private-files" "$deploy_root/shared/comments" "$deploy_root/shared/chats" "$deploy_root/shared/analytics" "$deploy_root/shared/journal" "$deploy_root/shared/reading" "$deploy_root/shared/self-insight" "$deploy_root/shared/quizzes"
 chmod 700 "$deploy_root/shared/chats"
 chmod 700 "$deploy_root/shared/analytics"
 chmod 700 "$deploy_root/shared/journal"
 chmod 700 "$deploy_root/shared/reading"
+chmod 700 "$deploy_root/shared/self-insight"
 chmod 700 "$deploy_root/shared/quizzes"
 git archive "$local_sha" | tar -x -C "$release_dir"
 
