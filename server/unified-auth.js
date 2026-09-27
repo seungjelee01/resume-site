@@ -24,9 +24,13 @@ export function createUnifiedAuth(env = process.env) {
     async attachUser(req, res, next) {
       try {
         const session = await internal('/internal/session', req.get('Cookie') || '');
-        if (session.study && session.user && typeof session.user.name === 'string') {
-          req.portalUser = { name: session.user.name.trim().slice(0, 30) };
-          res.locals.portalUser = req.portalUser;
+        if (session.study && session.user && typeof session.user.id === 'string' && typeof session.user.name === 'string') {
+          const id = session.user.id.trim().slice(0, 100);
+          const name = session.user.name.trim().slice(0, 30);
+          if (id && name) {
+            req.portalUser = { id, name };
+            res.locals.portalUser = req.portalUser;
+          }
         }
       } catch { /* Public and share-link access remain available while login lookup is unavailable. */ }
       next();
@@ -34,8 +38,10 @@ export function createUnifiedAuth(env = process.env) {
     async userFromCookies(cookies) {
       try {
         const session = await internal('/internal/session', portalCookie(cookies));
-        return session.study && session.user && typeof session.user.name === 'string'
-          ? { name: session.user.name.trim().slice(0, 30) } : null;
+        if (!session.study || !session.user || typeof session.user.id !== 'string' || typeof session.user.name !== 'string') return null;
+        const id = session.user.id.trim().slice(0, 100);
+        const name = session.user.name.trim().slice(0, 30);
+        return id && name ? { id, name } : null;
       } catch { return null; }
     },
   };

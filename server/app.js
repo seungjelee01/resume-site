@@ -421,6 +421,7 @@ const chatService = createChatService({
   allowLocalAdmin,
   verifyAdmin: (token) => cloudflareAccess.verify(token),
   canAccessStudy,
+  getPortalUser: (cookies) => unifiedAuth.userFromCookies(cookies),
   notify: queueDiscordChatNotification,
   limits: {
     maxMessages: positiveInteger(process.env.CHAT_MAX_MESSAGES, 500),

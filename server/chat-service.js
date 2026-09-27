@@ -33,7 +33,7 @@ function publicConversation(conversation) {
   };
 }
 
-export function createChatService({ directory, production, allowLocalAdmin, verifyAdmin, canAccessStudy, notify, limits }) {
+export function createChatService({ directory, production, allowLocalAdmin, verifyAdmin, canAccessStudy, getPortalUser, notify, limits }) {
   const clients = new Map();
   const adminListClients = new Set();
   const pendingSessions = new Map();
@@ -70,6 +70,31 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     if (!idPattern.test(id) || !token) return null;
     try { const conversation = await loadAvailable(id); return conversation && safeEqual(tokenHash(token), conversation.tokenHash) ? conversation : null; } catch { return null; }
   };
+  const findForPortalUser = async (portalUserId) => {
+    const candidates = [...pendingSessions.values()].filter((conversation) => conversation.portalUserId === portalUserId);
+    await fs.mkdir(directory, { recursive: true });
+    const names = (await fs.readdir(directory)).filter((name) => name.endsWith('.json') && idPattern.test(name.slice(0, -5)));
+    for (const name of names) {
+      try {
+        const conversation = await load(name.slice(0, -5));
+        if (conversation.portalUserId === portalUserId) candidates.push(conversation);
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+    return candidates.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] || null;
+  };
+  const resolveVisitor = async (cookieHeader, portalUser) => {
+    const cookieConversation = await authenticate(cookieHeader);
+    if (!portalUser) return cookieConversation && !cookieConversation.portalUserId ? cookieConversation : null;
+    const accountConversation = await findForPortalUser(portalUser.id);
+    if (accountConversation) return accountConversation;
+    if (!cookieConversation || cookieConversation.portalUserId) return null;
+    cookieConversation.portalUserId = portalUser.id;
+    cookieConversation.visitorName = portalUser.name;
+    if (pendingSessions.has(cookieConversation.id)) pendingSessions.set(cookieConversation.id, cookieConversation);
+    else await save(cookieConversation);
+    return cookieConversation;
+  };
+
   const maskIp = (value = '') => value.includes(':')
     ? `${value.split(':').slice(0, 3).join(':')}::/48`
     : value.split('.').length === 4 ? `${value.split('.').slice(0, 3).join('.')}.*` : 'unknown';
@@ -131,7 +156,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
 
   async function session(req, res) {
     await cleanupExpired();
-    let conversation = await authenticate(req.get('Cookie'));
+    let conversation = await resolveVisitor(req.get('Cookie'), req.portalUser);
     if (conversation && req.portalUser?.name && conversation.visitorName !== req.portalUser.name) {
       conversation.visitorName = req.portalUser.name;
       if (pendingSessions.has(conversation.id)) pendingSessions.set(conversation.id, conversation);
@@ -159,6 +184,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
       conversation = {
         id,
         ...(req.portalUser?.name ? { visitorName: req.portalUser.name } : {}),
+        ...(req.portalUser?.id ? { portalUserId: req.portalUser.id } : {}),
         tokenHash: tokenHash(token),
         ipMasked: maskIp(address),
         createdAt: now,
@@ -249,8 +275,8 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     } catch { return null; }
   }
 
-  async function getVisitorAttachment(cookieHeader, id, messageId) {
-    const conversation = await authenticate(cookieHeader);
+  async function getVisitorAttachment(cookieHeader, portalUser, id, messageId) {
+    const conversation = await resolveVisitor(cookieHeader, portalUser);
     if (!conversation || conversation.id !== id) return null;
     return getAttachment(id, messageId);
   }
@@ -274,8 +300,9 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
           }
           if (!isAdminList) conversation = await get(url.searchParams.get('conversation'));
         } else {
-          if (!(await canAccessStudy(parseCookies(request.headers.cookie)))) return socket.destroy();
-          conversation = await authenticate(request.headers.cookie);
+          const cookies = parseCookies(request.headers.cookie);
+          if (!(await canAccessStudy(cookies))) return socket.destroy();
+          conversation = await resolveVisitor(request.headers.cookie, await getPortalUser(cookies));
         }
         if (!isAdminList && !conversation) return socket.destroy();
         webSocketServer.handleUpgrade(request, socket, head, (webSocket) => webSocketServer.emit('connection', webSocket, { conversation, isAdmin, isAdminList, cookies: parseCookies(request.headers.cookie) }));
@@ -319,7 +346,12 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
             return;
           }
           if (input.type !== 'message') return;
-          if (!isAdmin && !(await canAccessStudy(cookies))) return socket.close(1008, 'login required');
+          if (!isAdmin) {
+            if (conversation.portalUserId) {
+              const portalUser = await getPortalUser(cookies);
+              if (!portalUser || portalUser.id !== conversation.portalUserId) return socket.close(1008, 'login required');
+            } else if (!(await canAccessStudy(cookies))) return socket.close(1008, 'access required');
+          }
           enforceRate(`${id}:${isAdmin ? 'admin' : 'visitor'}`);
           const maxLength = isAdmin ? adminMessageMaxLength : visitorMessageMaxLength;
           const message = { id: crypto.randomUUID(), sender: isAdmin ? 'admin' : 'visitor', content: normalize(input.content, maxLength), createdAt: new Date().toISOString() };
