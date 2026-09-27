@@ -1,8 +1,11 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export const PRACTICE_TIME_CATEGORIES = Object.freeze(['업무', '학습', '휴식', '생활', '기타']);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const backlogIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const PRACTICE_BACKLOG_CATEGORIES = Object.freeze(['Oracle', 'Python', '컴퓨터 구조', '알고리즘', '기타']);
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 function validDate(value) {
@@ -20,6 +23,7 @@ function minutes(value) { const [hour, minute] = value.split(':').map(Number); r
 
 export function createPracticeService(directory) {
   const root = path.resolve(directory);
+  const backlogPath = path.join(root, 'backlog.json');
   const filePath = (date) => {
     if (!validDate(date)) throw new Error('실천 기록 날짜를 확인하세요.');
     return path.join(root, `${date}.json`);
@@ -70,5 +74,38 @@ export function createPracticeService(directory) {
     await fs.rename(temporary, filePath(date)); await fs.chmod(filePath(date), 0o600);
     return record;
   };
-  return { load, list, save };
+  const loadBacklog = async () => {
+    try {
+      const items = JSON.parse(await fs.readFile(backlogPath, 'utf8'));
+      return Array.isArray(items) ? items : [];
+    } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  };
+  const writeBacklog = async (items) => {
+    await ensureDirectory();
+    const temporary = path.join(root, `.${crypto.randomUUID()}.tmp`);
+    await fs.writeFile(temporary, `${JSON.stringify(items, null, 2)}\n`, { mode: 0o600 });
+    await fs.rename(temporary, backlogPath); await fs.chmod(backlogPath, 0o600);
+  };
+  const addBacklog = async (input) => {
+    const category = String(input.category || '');
+    if (!PRACTICE_BACKLOG_CATEGORIES.includes(category)) throw new Error('백로그 분류를 확인하세요.');
+    const title = text(input.title, '백로그 제목', 150);
+    if (!title) throw new Error('백로그 제목을 입력하세요.');
+    const items = await loadBacklog(); const now = new Date().toISOString();
+    const item = { id: crypto.randomUUID(), title, category, notes: text(input.notes, '백로그 메모', 1000), completed: false, createdAt: now, updatedAt: now };
+    items.push(item); await writeBacklog(items); return item;
+  };
+  const toggleBacklog = async (id) => {
+    if (!backlogIdPattern.test(String(id || ''))) throw new Error('백로그 주소를 확인하세요.');
+    const items = await loadBacklog(); const item = items.find((entry) => entry.id === id);
+    if (!item) return null;
+    item.completed = !item.completed; item.updatedAt = new Date().toISOString(); await writeBacklog(items); return item;
+  };
+  const removeBacklog = async (id) => {
+    if (!backlogIdPattern.test(String(id || ''))) throw new Error('백로그 주소를 확인하세요.');
+    const items = await loadBacklog(); const filtered = items.filter((entry) => entry.id !== id);
+    if (filtered.length === items.length) return false;
+    await writeBacklog(filtered); return true;
+  };
+  return { load, list, save, loadBacklog, addBacklog, toggleBacklog, removeBacklog };
 }

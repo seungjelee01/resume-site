@@ -21,3 +21,15 @@ test('practice rejects invalid dates, non-30-minute and overlapping blocks', asy
   await assert.rejects(() => service.save('2026-09-27', { timeStart: '09:00', timeEnd: '09:20', timeCategory: '학습', timeDescription: 'x' }), /30분/);
   await assert.rejects(() => service.save('2026-09-27', { timeStart: ['09:00','09:30'], timeEnd: ['10:00','10:30'], timeCategory: ['학습','업무'], timeDescription: ['a','b'] }), /겹치는/);
 });
+
+
+test('practice backlog supports add, complete and remove', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'practice-')); t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const service = createPracticeService(dir);
+  const item = await service.addBacklog({ title: 'Python 복습', category: 'Python', notes: '파일과 로그 처리' });
+  assert.equal((await service.loadBacklog())[0].title, 'Python 복습');
+  assert.equal((await service.toggleBacklog(item.id)).completed, true);
+  assert.equal(await service.removeBacklog(item.id), true);
+  assert.equal((await service.loadBacklog()).length, 0);
+  await assert.rejects(() => service.addBacklog({ title: 'x', category: '잘못된 분류' }), /분류/);
+});
