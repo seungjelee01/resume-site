@@ -138,10 +138,8 @@ const ORACLE_SEED_V5 = Object.freeze([
   ['사용자에게 시스템 권한을 부여하는 명령은?', ['GRANT'], 'oracle-users-and-privileges'],
   ['사용자에게 부여한 권한을 회수하는 명령은?', ['REVOKE'], 'oracle-users-and-privileges'],
   ['권한을 묶어 사용자에게 한 번에 부여할 수 있는 객체는?', ['ROLE', '롤'], 'oracle-users-and-privileges'],
-  ['다른 사용자에게 시스템 권한을 다시 부여할 수 있게 하는 옵션은?', ['WITH ADMIN OPTION'], 'oracle-users-and-privileges'],
-  ['다른 사용자에게 객체 권한을 다시 부여할 수 있게 하는 옵션은?', ['WITH GRANT OPTION'], 'oracle-users-and-privileges'],
   ['UPDATE문의 SET 절에서 한 행과 한 열을 반환해야 하는 서브쿼리 종류는?', ['스칼라 서브쿼리', 'Scalar Subquery'], 'oracle-subqueries-in-update-and-delete'],
-  ['UPDATE나 DELETE 대상 행을 제한하기 위해 WHERE 절에 사용하는 서브쿼리는?', ['상관 서브쿼리', 'Correlated Subquery'], 'oracle-subqueries-in-update-and-delete'],
+  ['UPDATE나 DELETE 대상 행을 제한하기 위해 WHERE 절에 사용하는 서브쿼리는?', ['상호관련 서브쿼리', '상관 서브쿼리', 'Correlated Subquery'], 'oracle-subqueries-in-update-and-delete'],
   ['기존 테이블의 구조를 변경하는 명령은?', ['ALTER TABLE'], 'oracle-alter-table-and-constraints'],
   ['NULL 입력을 허용하지 않는 무결성 제약조건은?', ['NOT NULL'], 'oracle-alter-table-and-constraints'],
   ['중복 값과 NULL을 허용하지 않고 행을 식별하는 제약조건은?', ['PRIMARY KEY', '기본키'], 'oracle-alter-table-and-constraints'],
@@ -212,7 +210,24 @@ const ORACLE_SEED_V5 = Object.freeze([
   ['커서를 열 때 값을 전달해 WHERE 조건을 바꿀 수 있는 커서는?', ['매개변수가 있는 커서', 'Parameterized Cursor', '매개변수 커서'], 'plsql-explicit-cursors'],
 ]);
 
-const SEED_VERSION = 5;
+const ORACLE_SEED_V6 = Object.freeze([
+  ['여러 프로그램에서 공통으로 사용하는 값을 패키지에 선언한 것은?', ['패키지 상수', 'Package Constant'], 'plsql-package-state-and-standards'],
+  ['Oracle 오류 번호에 사용자가 선언한 예외 이름을 연결하는 지시어는?', ['PRAGMA EXCEPTION_INIT', 'EXCEPTION_INIT'], 'plsql-package-state-and-standards'],
+  ['익명 블록, 프로시저와 함수에서 닫지 않은 명시적 커서가 자동으로 닫히는 시점은?', ['프로그램 호출이 끝날 때', '프로그램 종료 시', '호출 종료 시'], 'plsql-package-state-and-standards'],
+  ['CLOSE하거나 세션을 종료할 때까지 열린 상태를 유지하는 커서는?', ['패키지 커서', 'Package Cursor'], 'plsql-package-state-and-standards'],
+  ['호출이 끝난 뒤 패키지 상태를 초기화하기 위해 명세와 본문에 지정하는 지시어는?', ['PRAGMA SERIALLY_REUSABLE', 'SERIALLY_REUSABLE'], 'plsql-package-state-and-standards'],
+  ['지정된 데이터베이스 이벤트에 대한 응답으로 자동 실행되는 PL/SQL 프로그램은?', ['트리거', 'Trigger'], 'plsql-dml-triggers'],
+  ['영향을 받은 행이 없어도 DML 문장 하나에 한 번 실행되는 트리거는?', ['문장 트리거', 'Statement Trigger'], 'plsql-dml-triggers'],
+  ['DML 작업의 영향을 받은 각 행에 대해 실행되는 트리거는?', ['행 트리거', 'Row Trigger'], 'plsql-dml-triggers'],
+  ['DML 트리거를 행 트리거로 만드는 절은?', ['FOR EACH ROW'], 'plsql-dml-triggers'],
+  ['트리거 컴파일 오류를 확인하는 SQL*Plus 명령은?', ['SHOW ERROR', 'SHOW ERRORS'], 'plsql-dml-triggers'],
+  ['트리거 실행을 중지하기 위해 ALTER TRIGGER문에 사용하는 키워드는?', ['DISABLE'], 'plsql-dml-triggers'],
+  ['트리거에서 INSERT 이벤트가 발생했는지 확인하는 조건부 술어는?', ['INSERTING'], 'plsql-dml-triggers'],
+  ['컴파일에 실패한 활성 트리거의 이벤트가 발생할 때 재검증에 실패하여 발생할 수 있는 오류는?', ['ORA-04098', 'ORA-04098 오류'], 'plsql-dml-triggers'],
+  ['트리거를 생성하는 데 필요한 시스템 권한은?', ['CREATE TRIGGER'], 'plsql-dml-triggers'],
+]);
+
+const SEED_VERSION = 6;
 
 function normalizeText(value, label, maxLength, required = false) {
   const text = String(value || '').trim();
@@ -267,6 +282,7 @@ export function createQuizService(directory) {
       ...(version < 3 ? ORACLE_SEED_V3 : []),
       ...(version < 4 ? ORACLE_SEED_V4 : []),
       ...(version < 5 ? ORACLE_SEED_V5 : []),
+      ...(version < 6 ? ORACLE_SEED_V6 : []),
     ];
     for (const [prompt, answers, relatedSlug] of seeds) {
       if (existingPrompts.has(prompt)) continue;
