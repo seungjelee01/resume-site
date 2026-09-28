@@ -761,7 +761,7 @@ app.get('/study/chat/session/', (req, res, next) => chatService.session(req, res
 
 app.get('/study/chat/files/:conversationId/:messageId/', async (req, res, next) => {
   try {
-    const file = await chatService.getVisitorAttachment(req.get('Cookie'), req.params.conversationId, req.params.messageId);
+    const file = await chatService.getVisitorAttachment(req.get('Cookie'), req.portalUser, req.params.conversationId, req.params.messageId);
     if (!file) return res.status(404).send('Not found');
     res.setHeader('Cache-Control', 'private, no-store');
     res.download(file.path, file.name);
