@@ -170,7 +170,6 @@ const ORACLE_SEED_V5 = Object.freeze([
   ['PL/SQL에서 조건이 TRUE일 때만 문장을 실행하는 제어문은?', ['IF'], 'plsql-conditionals'],
   ['여러 조건을 순서대로 검사하는 IF문의 절은?', ['ELSIF'], 'plsql-conditionals'],
   ['값 또는 조건에 따라 하나의 실행 경로를 선택하는 PL/SQL 제어문은?', ['CASE'], 'plsql-conditionals'],
-  ['중첩 블록에서 내부에 같은 이름의 변수가 선언되어 외부 변수가 보이지 않게 되는 현상은?', ['가려짐', 'Shadowing', '변수 가려짐'], 'plsql-nested-blocks-and-scope'],
   ['중첩 블록에서 블록 이름으로 외부 변수를 구분해 참조할 때 사용하는 것은?', ['블록 레이블', 'Block Label'], 'plsql-nested-blocks-and-scope'],
   ['SQL문을 실행하기 위해 메모리에 할당되는 영역은?', ['SQL 커서', 'SQL Cursor', '커서'], 'plsql-implicit-cursors-and-sql'],
   ['PL/SQL에서 한 행의 조회 결과를 변수에 저장하는 절은?', ['INTO', 'SELECT INTO'], 'plsql-implicit-cursors-and-sql'],
