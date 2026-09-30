@@ -226,7 +226,22 @@ const ORACLE_SEED_V6 = Object.freeze([
   ['트리거를 생성하는 데 필요한 시스템 권한은?', ['CREATE TRIGGER'], 'plsql-dml-triggers'],
 ]);
 
-const SEED_VERSION = 6;
+const ORACLE_SEED_V7 = Object.freeze([
+  ['현재 세션에 적용된 NLS 설정을 확인하는 데이터 딕셔너리 뷰는?', ['NLS_SESSION_PARAMETERS'], 'oracle-to-char-date-format'],
+  ['TO_CHAR와 TO_DATE에서 특정 SQL문의 날짜 언어를 지정하는 파라미터는?', ['NLS_DATE_LANGUAGE'], 'oracle-to-char-date-format'],
+  ['INSERT 행 트리거에서 입력된 새 값을 참조하는 수식자는?', [':NEW', 'NEW'], 'plsql-row-triggers-old-new-and-when'],
+  ['DELETE 행 트리거에서 삭제 전 값을 참조하는 수식자는?', [':OLD', 'OLD'], 'plsql-row-triggers-old-new-and-when'],
+  ['특정 컬럼이 SET절에 포함된 UPDATE문에서만 트리거를 실행하도록 지정하는 절은?', ['UPDATE OF'], 'plsql-row-triggers-old-new-and-when'],
+  ['트리거 본문에서 특정 컬럼의 수정으로 실행되었는지 확인하는 조건부 술어는?', ['UPDATING', 'UPDATING()', "UPDATING('컬럼')"], 'plsql-row-triggers-old-new-and-when'],
+  ['영향을 받은 행 중 지정한 조건에 맞는 행에서만 트리거 본문을 실행하는 절은?', ['WHEN', 'WHEN절'], 'plsql-row-triggers-old-new-and-when'],
+  ['참조 중인 기본키나 고유키와 연결된 외래키 제약조건까지 테이블과 함께 제거하는 옵션은?', ['CASCADE CONSTRAINTS'], 'plsql-row-triggers-old-new-and-when'],
+  ['DROP TABLE에서 테이블을 휴지통에 남기지 않고 바로 제거하는 옵션은?', ['PURGE'], 'plsql-row-triggers-old-new-and-when'],
+  ['트리거 안에서 COMMIT을 수행할 때 발생하는 Oracle 오류는?', ['ORA-04092', 'ORA-04092 오류'], 'plsql-trigger-transactions-sync-and-audit'],
+  ['트리거가 수행한 DML은 트리거를 발생시킨 DML과 어떤 트랜잭션에 포함되는가?', ['같은 트랜잭션', '동일한 트랜잭션', '동일 트랜잭션'], 'plsql-trigger-transactions-sync-and-audit'],
+  ['감사 트리거에서 작업을 실행한 사용자를 반환하는 값은?', ['USER'], 'plsql-trigger-transactions-sync-and-audit'],
+]);
+
+const SEED_VERSION = 7;
 
 function normalizeText(value, label, maxLength, required = false) {
   const text = String(value || '').trim();
@@ -282,6 +297,7 @@ export function createQuizService(directory) {
       ...(version < 4 ? ORACLE_SEED_V4 : []),
       ...(version < 5 ? ORACLE_SEED_V5 : []),
       ...(version < 6 ? ORACLE_SEED_V6 : []),
+      ...(version < 7 ? ORACLE_SEED_V7 : []),
     ];
     for (const [prompt, answers, relatedSlug] of seeds) {
       if (existingPrompts.has(prompt)) continue;
