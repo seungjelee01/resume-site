@@ -80,7 +80,10 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
         if (conversation.portalUserId === portalUserId) candidates.push(conversation);
       } catch (error) { if (error.code !== 'ENOENT') throw error; }
     }
-    return candidates.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] || null;
+    return candidates.sort((a, b) => {
+      const messagePriority = Number(b.messages.length > 0) - Number(a.messages.length > 0);
+      return messagePriority || b.updatedAt.localeCompare(a.updatedAt);
+    })[0] || null;
   };
   const resolveVisitor = async (cookieHeader, portalUser) => {
     const cookieConversation = await authenticate(cookieHeader);
