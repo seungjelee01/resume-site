@@ -241,7 +241,25 @@ const ORACLE_SEED_V7 = Object.freeze([
   ['감사 트리거에서 작업을 실행한 사용자를 반환하는 값은?', ['USER'], 'plsql-trigger-transactions-sync-and-audit'],
 ]);
 
-const SEED_VERSION = 7;
+const ORACLE_SEED_V8 = Object.freeze([
+  ['키 보존 테이블로 매핑되지 않은 뷰 컬럼을 직접 수정할 때 발생하는 오류는?', ['ORA-01779', 'ORA-01779 오류'], 'plsql-before-instead-of-and-ddl-triggers'],
+  ['뷰에 요청된 DML 대신 트리거 본문의 DML을 실행하는 트리거는?', ['INSTEAD OF 트리거', 'INSTEAD OF', 'INSTEAD OF Trigger'], 'plsql-before-instead-of-and-ddl-triggers'],
+  ['데이터베이스 전체에서 발생하는 DDL 이벤트를 감지하도록 트리거 범위를 지정하는 절은?', ['ON DATABASE'], 'plsql-before-instead-of-and-ddl-triggers'],
+  ['특정 스키마에서 발생하는 DDL 이벤트를 감지하도록 트리거 범위를 지정하는 절은?', ['ON 스키마.SCHEMA', 'ON schema.SCHEMA', 'ON HR.SCHEMA'], 'plsql-before-instead-of-and-ddl-triggers'],
+  ['데이터베이스 또는 다른 사용자 스키마에 데이터베이스 이벤트 트리거를 생성하는 데 필요한 시스템 권한은?', ['ADMINISTER DATABASE TRIGGER'], 'plsql-before-instead-of-and-ddl-triggers'],
+  ['익명 블록이나 다른 서브프로그램의 선언부에 정의하여 그 블록 안에서 사용하는 프로시저 또는 함수는?', ['로컬 서브프로그램', 'Local Subprogram'], 'plsql-local-subprograms-and-bulk-collect'],
+  ['PL/SQL 엔진과 SQL 엔진 사이에서 실행 제어와 데이터가 오가는 현상은?', ['문맥 전환', '문맥전환', 'Context Switch', 'Context Switching'], 'plsql-local-subprograms-and-bulk-collect'],
+  ['여러 행의 조회 결과를 한 번에 컬렉션으로 가져오는 절은?', ['BULK COLLECT', 'BULK COLLECT INTO'], 'plsql-local-subprograms-and-bulk-collect'],
+  ['SELECT 결과 여러 행을 컬렉션에 한 번에 저장할 때 사용하는 구문은?', ['SELECT BULK COLLECT INTO', 'BULK COLLECT INTO'], 'plsql-local-subprograms-and-bulk-collect'],
+  ['명시적 커서의 여러 행을 컬렉션에 한 번에 저장할 때 사용하는 구문은?', ['FETCH BULK COLLECT INTO', 'BULK COLLECT INTO'], 'plsql-local-subprograms-and-bulk-collect'],
+  ['컬렉션 요소를 이용한 DML을 묶어서 실행해 문맥 전환을 줄이는 문은?', ['FORALL', 'FORALL문'], 'plsql-forall-and-save-exceptions'],
+  ['FORALL의 각 반복에서 DML의 영향을 받은 행 수를 확인하는 속성은?', ['SQL%BULK_ROWCOUNT', 'BULK_ROWCOUNT'], 'plsql-forall-and-save-exceptions'],
+  ['FORALL 실행 중 일부 DML에서 오류가 발생해도 나머지 작업을 계속하도록 하는 절은?', ['SAVE EXCEPTIONS'], 'plsql-forall-and-save-exceptions'],
+  ['SAVE EXCEPTIONS로 저장된 FORALL 오류 정보를 제공하는 컬렉션은?', ['SQL%BULK_EXCEPTIONS', 'BULK_EXCEPTIONS'], 'plsql-forall-and-save-exceptions'],
+  ['SQL%BULK_EXCEPTIONS에서 오류가 발생한 컬렉션 요소의 인덱스를 나타내는 필드는?', ['ERROR_INDEX'], 'plsql-forall-and-save-exceptions'],
+]);
+
+const SEED_VERSION = 8;
 
 function normalizeText(value, label, maxLength, required = false) {
   const text = String(value || '').trim();
@@ -298,6 +316,7 @@ export function createQuizService(directory) {
       ...(version < 5 ? ORACLE_SEED_V5 : []),
       ...(version < 6 ? ORACLE_SEED_V6 : []),
       ...(version < 7 ? ORACLE_SEED_V7 : []),
+      ...(version < 8 ? ORACLE_SEED_V8 : []),
     ];
     for (const [prompt, answers, relatedSlug] of seeds) {
       if (existingPrompts.has(prompt)) continue;
