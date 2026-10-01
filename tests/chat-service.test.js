@@ -63,3 +63,36 @@ test('an existing account inquiry takes priority over a newer empty pending sess
 
   await fs.rm(directory, { recursive: true, force: true });
 });
+
+
+test('admin can upload and download a disk image in ordered chunks', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'resume-chat-file-'));
+  const conversation = {
+    id: '33333333-3333-4333-8333-333333333333',
+    tokenHash: 'token', ipMasked: '127.0.0.*', createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(), unread: 0,
+    messages: [{ id: '44444444-4444-4444-8444-444444444444', sender: 'visitor', content: 'send image', createdAt: new Date().toISOString() }],
+  };
+  await fs.writeFile(path.join(directory, `${conversation.id}.json`), JSON.stringify(conversation));
+  const service = createChatService({
+    directory, production: false, allowLocalAdmin: true, verifyAdmin: async () => {},
+    canAccessStudy: async () => true, getPortalUser: async () => null, notify: () => {}, limits,
+  });
+
+  const maximum = await service.beginAdminUpload(conversation.id, { name: 'maximum-size.img', size: 5 * 1024 * 1024 * 1024 });
+  await service.cancelAdminUpload(conversation.id, maximum.uploadId);
+  await assert.rejects(() => service.beginAdminUpload(conversation.id, { name: 'too-large.img', size: 5 * 1024 * 1024 * 1024 + 1 }), /5GB/);
+
+  const upload = await service.beginAdminUpload(conversation.id, { name: 'database-disk.iso', size: 9 });
+  assert.equal(upload.received, 0);
+  assert.deepEqual(await service.appendAdminUploadChunk(conversation.id, upload.uploadId, 0, Buffer.from('disk')), { received: 4, size: 9 });
+  assert.deepEqual(await service.appendAdminUploadChunk(conversation.id, upload.uploadId, 4, Buffer.from('image')), { received: 9, size: 9 });
+  const message = await service.completeAdminUpload(conversation.id, upload.uploadId);
+  assert.equal(message.attachment.name, 'database-disk.iso');
+  assert.equal(message.attachment.size, 9);
+  const downloaded = await service.getAttachment(conversation.id, message.id);
+  assert.equal(await fs.readFile(downloaded.path, 'utf8'), 'diskimage');
+  assert.equal(downloaded.name, 'database-disk.iso');
+
+  await fs.rm(directory, { recursive: true, force: true });
+});

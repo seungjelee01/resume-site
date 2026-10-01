@@ -6,8 +6,9 @@ import { WebSocketServer, WebSocket } from 'ws';
 const idPattern = /^[0-9a-f-]{36}$/i;
 const visitorMessageMaxLength = 1000;
 const adminMessageMaxLength = 5000;
-const adminTextFileMaxSize = 2 * 1024 * 1024;
-const textFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.txt$/iu;
+const adminFileMaxSize = 5 * 1024 * 1024 * 1024;
+const adminFileChunkSize = 16 * 1024 * 1024;
+const adminFileNamePattern = /^[^\u0000-\u001f\u007f/\\]{1,180}$/u;
 const visitorLabel = (conversation) => conversation.visitorName || `방문자 #${conversation.id.slice(0, 4).toUpperCase()}`;
 
 function parseCookies(header = '') {
@@ -44,7 +45,10 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
 
   const filePath = (id) => path.join(directory, `${id}.json`);
   const attachmentDirectory = (id) => path.join(directory, `${id}.files`);
-  const attachmentPath = (id, messageId) => path.join(attachmentDirectory(id), `${messageId}.txt`);
+  const attachmentPath = (id, messageId, attachment = null) => path.join(attachmentDirectory(id), attachment?.storageName || `${messageId}.txt`);
+  const uploadDirectory = (id) => path.join(attachmentDirectory(id), '.uploads');
+  const uploadMetadataPath = (id, uploadId) => path.join(uploadDirectory(id), `${uploadId}.json`);
+  const uploadPartPath = (id, uploadId) => path.join(uploadDirectory(id), `${uploadId}.part`);
   const load = async (id) => JSON.parse(await fs.readFile(filePath(id), 'utf8'));
   const save = async (conversation) => {
     await fs.mkdir(directory, { recursive: true });
@@ -227,44 +231,86 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
   }
 
-  async function sendAdminFile(id, file) {
-    if (!idPattern.test(id)) return null;
-    const name = String(file?.originalname || '').normalize('NFC');
-    const buffer = file?.buffer;
-    if (!textFileNamePattern.test(name) || !Buffer.isBuffer(buffer) || !buffer.length || buffer.length > adminTextFileMaxSize) {
-      throw new Error('2MB 이하의 .txt 파일만 전송할 수 있습니다.');
+  async function beginAdminUpload(id, input) {
+    if (!idPattern.test(String(id || '')) || !await get(id)) return null;
+    const name = String(input?.name || '').normalize('NFC').trim();
+    const size = Number(input?.size);
+    if (!adminFileNamePattern.test(name) || name === '.' || name === '..') throw new Error('파일 이름을 확인해 주세요.');
+    if (!Number.isSafeInteger(size) || size < 1 || size > adminFileMaxSize) throw new Error('5GB 이하의 파일만 전송할 수 있습니다.');
+    const stats = await fs.statfs(directory);
+    if (Number(stats.bavail) * Number(stats.bsize) < size + 1024 * 1024 * 1024) throw new Error('서버 저장 공간이 부족합니다.');
+    const uploadId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const metadata = { id: uploadId, conversationId: id, name, size, received: 0, createdAt };
+    await fs.mkdir(uploadDirectory(id), { recursive: true, mode: 0o700 });
+    await fs.chmod(uploadDirectory(id), 0o700);
+    await fs.writeFile(uploadPartPath(id, uploadId), new Uint8Array(), { mode: 0o600, flag: 'wx' });
+    try {
+      await fs.writeFile(uploadMetadataPath(id, uploadId), `${JSON.stringify(metadata, null, 2)}
+`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    } catch (error) {
+      await fs.rm(uploadPartPath(id, uploadId), { force: true });
+      throw error;
     }
-    let text;
-    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); } catch { throw new Error('UTF-8로 저장된 텍스트 파일만 전송할 수 있습니다.'); }
-    if (/\u0000|[\u0001-\u0008\u000b\u000c\u000e-\u001f]/.test(text)) throw new Error('텍스트 파일 내용을 확인해 주세요.');
-    enforceRate(`${id}:admin`);
-    const message = {
-      id: crypto.randomUUID(),
-      sender: 'admin',
-      content: `파일: ${name}`,
-      attachment: { name, size: buffer.length },
-      createdAt: new Date().toISOString(),
-    };
-    const saved = await update(id, async () => {
-      const current = await load(id);
-      if (current.messages.length >= limits.maxMessages) throw new Error(`한 문의에서는 메시지를 ${limits.maxMessages}개까지 보낼 수 있습니다.`);
-      await fs.mkdir(attachmentDirectory(id), { recursive: true, mode: 0o700 });
-      await fs.chmod(attachmentDirectory(id), 0o700);
-      const target = attachmentPath(id, message.id);
-      try {
-        await fs.writeFile(target, buffer, { mode: 0o640, flag: 'wx' });
-        current.messages.push(message);
-        current.updatedAt = message.createdAt;
-        await save(current);
-      } catch (error) {
-        await fs.rm(target, { force: true });
-        throw error;
-      }
-      return current;
+    return { uploadId, chunkSize: adminFileChunkSize, received: 0 };
+  }
+
+  async function appendAdminUploadChunk(id, uploadId, offset, buffer) {
+    if (![id, uploadId].every((value) => idPattern.test(String(value || '')))) return null;
+    if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > adminFileChunkSize) throw new Error('업로드 조각 크기를 확인해 주세요.');
+    return update(`${id}:${uploadId}`, async () => {
+      let metadata;
+      try { metadata = JSON.parse(await fs.readFile(uploadMetadataPath(id, uploadId), 'utf8')); }
+      catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+      if (metadata.conversationId !== id || metadata.id !== uploadId || offset !== metadata.received) throw new Error('업로드 순서가 올바르지 않습니다.');
+      if (metadata.received + buffer.length > metadata.size) throw new Error('파일 크기가 처음 선택한 크기와 다릅니다.');
+      const handle = await fs.open(uploadPartPath(id, uploadId), 'r+');
+      try { await handle.write(buffer, 0, buffer.length, metadata.received); await handle.sync(); }
+      finally { await handle.close(); }
+      metadata.received += buffer.length;
+      const temporary = `${uploadMetadataPath(id, uploadId)}.tmp`;
+      await fs.writeFile(temporary, `${JSON.stringify(metadata, null, 2)}
+`, { encoding: 'utf8', mode: 0o600 });
+      await fs.rename(temporary, uploadMetadataPath(id, uploadId));
+      return { received: metadata.received, size: metadata.size };
     });
-    broadcast(id, { type: 'message', message });
-    broadcastRoom(saved);
-    return message;
+  }
+
+  async function completeAdminUpload(id, uploadId) {
+    if (![id, uploadId].every((value) => idPattern.test(String(value || '')))) return null;
+    enforceRate(`${id}:admin`);
+    return update(`${id}:${uploadId}`, async () => {
+      let metadata;
+      try { metadata = JSON.parse(await fs.readFile(uploadMetadataPath(id, uploadId), 'utf8')); }
+      catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+      if (metadata.conversationId !== id || metadata.received !== metadata.size) throw new Error('파일 업로드가 아직 완료되지 않았습니다.');
+      const message = {
+        id: crypto.randomUUID(), sender: 'admin', content: `파일: ${metadata.name}`,
+        attachment: { name: metadata.name, size: metadata.size, storageName: metadata.id }, createdAt: new Date().toISOString(),
+      };
+      const target = attachmentPath(id, message.id, message.attachment);
+      const saved = await update(id, async () => {
+        const current = await load(id);
+        if (current.messages.length >= limits.maxMessages) throw new Error(`한 문의에서는 메시지를 ${limits.maxMessages}개까지 보낼 수 있습니다.`);
+        await fs.rename(uploadPartPath(id, uploadId), target);
+        try {
+          current.messages.push(message); current.updatedAt = message.createdAt; await save(current);
+        } catch (error) {
+          await fs.rename(target, uploadPartPath(id, uploadId)).catch(() => {});
+          throw error;
+        }
+        return current;
+      });
+      await fs.rm(uploadMetadataPath(id, uploadId), { force: true });
+      broadcast(id, { type: 'message', message }); broadcastRoom(saved);
+      return message;
+    });
+  }
+
+  async function cancelAdminUpload(id, uploadId) {
+    if (![id, uploadId].every((value) => idPattern.test(String(value || '')))) return false;
+    await Promise.all([fs.rm(uploadMetadataPath(id, uploadId), { force: true }), fs.rm(uploadPartPath(id, uploadId), { force: true })]);
+    return true;
   }
 
   async function getAttachment(id, messageId) {
@@ -273,8 +319,9 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
       const conversation = await load(id);
       const message = conversation.messages.find((item) => item.id === messageId && item.sender === 'admin' && item.attachment);
       if (!message) return null;
-      await fs.access(attachmentPath(id, messageId));
-      return { path: attachmentPath(id, messageId), name: message.attachment.name };
+      const storedPath = attachmentPath(id, messageId, message.attachment);
+      await fs.access(storedPath);
+      return { path: storedPath, name: message.attachment.name };
     } catch { return null; }
   }
 
@@ -341,7 +388,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
               const [removed] = current.messages.splice(index, 1);
               current.updatedAt = current.messages.at(-1)?.createdAt || current.createdAt;
               await save(current);
-              if (removed.attachment) await fs.rm(attachmentPath(id, removed.id), { force: true });
+              if (removed.attachment) await fs.rm(attachmentPath(id, removed.id, removed.attachment), { force: true });
               return current;
             });
             broadcast(id, { type: 'message-deleted', messageId: input.messageId });
@@ -379,5 +426,5 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     });
   }
 
-  return { attach, get, getAttachment, getVisitorAttachment, list, remove, sendAdminFile, session };
+  return { appendAdminUploadChunk, attach, beginAdminUpload, cancelAdminUpload, completeAdminUpload, get, getAttachment, getVisitorAttachment, list, remove, session };
 }

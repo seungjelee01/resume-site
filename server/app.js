@@ -131,11 +131,6 @@ const privateFileUpload = multer({
   limits: { fileSize: 15 * 1024 * 1024, files: 5 },
   fileFilter: uploadFileFilter(privateFileNamePattern, '지원하는 Python, SQL, TXT, PDF 또는 이미지 파일만 업로드할 수 있습니다.'),
 });
-const chatTextFileUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
-  fileFilter: uploadFileFilter(/^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.txt$/iu, '2MB 이하의 .txt 파일만 전송할 수 있습니다.'),
-});
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -1533,20 +1528,38 @@ app.get('/admin/chats/:id/', async (req, res, next) => {
         : `<p>${escapeHtml(message.content)}</p>`;
       return `<li class="is-${message.sender}" data-message-id="${message.id}"><span>${message.sender === 'admin' ? '관리자' : escapeHtml(visitorLabel)}</span>${body}<time>${escapeHtml(formatCommentDate(message.createdAt))}</time>${message.sender === 'admin' ? `<button class="admin-chat-message-delete" type="button" data-delete-message="${message.id}" aria-label="이 관리자 메시지 삭제">삭제</button>` : ''}</li>`;
     }).join('');
-    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260920-1"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>${escapeHtml(visitorLabel)}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}" data-visitor-label="${escapeHtml(visitorLabel)}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="5000" rows="3" data-admin-chat-input></textarea><div class="admin-chat-actions"><label class="button admin-chat-file-button" for="admin-chat-file"><span data-admin-chat-file-label>TXT 첨부</span><input id="admin-chat-file" type="file" accept=".txt,text/plain" data-admin-chat-file></label><button class="button primary" type="submit" data-admin-chat-submit>전송</button></div><div class="admin-chat-selected-file" data-admin-chat-selected-file hidden><div><strong data-admin-chat-selected-name></strong><small data-admin-chat-selected-size></small></div><button type="button" data-admin-chat-file-clear>선택 취소</button></div></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20260920-1" defer></script>`;
+    const content = `<link rel="stylesheet" href="/admin/assets/admin-chat.css?v=20260920-1"><div class="admin-title"><div><p>LIVE INQUIRY</p><h1>${escapeHtml(visitorLabel)}</h1></div><a class="button" href="/admin/chats/">목록</a></div><div class="admin-chat-panel" data-admin-chat data-conversation-id="${conversation.id}" data-visitor-label="${escapeHtml(visitorLabel)}"><p class="admin-chat-connection" data-admin-chat-status>연결 중</p><ol data-admin-chat-messages>${messages}</ol><form data-admin-chat-form><label for="admin-chat-message">답변</label><textarea id="admin-chat-message" maxlength="5000" rows="3" data-admin-chat-input></textarea><div class="admin-chat-actions"><label class="button admin-chat-file-button" for="admin-chat-file"><span data-admin-chat-file-label>파일 첨부</span><input id="admin-chat-file" type="file" data-admin-chat-file></label><button class="button primary" type="submit" data-admin-chat-submit>전송</button></div><div class="admin-chat-selected-file" data-admin-chat-selected-file hidden><div><strong data-admin-chat-selected-name></strong><small data-admin-chat-selected-size></small></div><button type="button" data-admin-chat-file-clear>선택 취소</button></div></form></div><form class="admin-chat-delete" method="post" action="/admin/chats/${conversation.id}/delete" onsubmit="return confirm('이 문의와 모든 메시지를 삭제할까요?')"><button class="button danger" type="submit">문의 삭제</button></form><script src="/admin/assets/admin-chat.js?v=20261001-1" defer></script>`;
     res.send(adminLayout('실시간 문의', content, res.locals.adminEmail, 'chats'));
   } catch (error) { next(error); }
 });
 
-app.post('/admin/chats/:id/files', (req, res, next) => {
-  chatTextFileUpload.single('file')(req, res, (error) => error ? res.status(400).json({ error: error.message }) : next());
-}, async (req, res, next) => {
+app.post('/admin/chats/:id/uploads', async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: '.txt 파일을 선택해 주세요.' });
-    if (!await chatService.get(req.params.id)) return res.status(404).json({ error: '문의 세션을 찾을 수 없습니다.' });
-    const message = await chatService.sendAdminFile(req.params.id, req.file);
+    const upload = await chatService.beginAdminUpload(req.params.id, { name: req.body.name, size: Number(req.body.size) });
+    if (!upload) return res.status(404).json({ error: '문의 세션을 찾을 수 없습니다.' });
+    res.status(201).json(upload);
+  } catch (error) { res.status(400).json({ error: error.message }); }
+});
+
+app.post('/admin/chats/:id/uploads/:uploadId/chunks', express.raw({ type: 'application/octet-stream', limit: '16mb' }), async (req, res) => {
+  try {
+    const chunk = await chatService.appendAdminUploadChunk(req.params.id, req.params.uploadId, Number(req.get('X-Upload-Offset')), req.body);
+    if (!chunk) return res.status(404).json({ error: '파일 업로드를 찾을 수 없습니다.' });
+    res.json(chunk);
+  } catch (error) { res.status(400).json({ error: error.message }); }
+});
+
+app.post('/admin/chats/:id/uploads/:uploadId/complete', async (req, res) => {
+  try {
+    const message = await chatService.completeAdminUpload(req.params.id, req.params.uploadId);
+    if (!message) return res.status(404).json({ error: '파일 업로드를 찾을 수 없습니다.' });
     res.status(201).json({ message });
   } catch (error) { res.status(400).json({ error: error.message }); }
+});
+
+app.post('/admin/chats/:id/uploads/:uploadId/cancel', async (req, res) => {
+  await chatService.cancelAdminUpload(req.params.id, req.params.uploadId);
+  res.sendStatus(204);
 });
 
 app.get('/admin/chats/:id/files/:messageId/', async (req, res, next) => {
