@@ -28,6 +28,7 @@ const resumeConfigs = {
         socialLinks: {
             github: "https://github.com/seungjelee01",
             study: "/study/",
+            reading: "/reading/",
         }
     },
 
@@ -184,7 +185,8 @@ Linux와 AWS 환경에서 백엔드 서비스를 배포·운영한 경험을 기
             profileImage: "profile.png",
             socialLinks: {
                 github: "https://github.com/seungjelee01",
-                study: "/study/"
+                study: "/study/",
+                reading: "/reading/"
             }
         },
         introduce: {
@@ -420,6 +422,7 @@ function applyConfig() {
 
     document.getElementById('github-link').href = safeUrl(resumeConfig.profile.socialLinks.github || '#');
     document.getElementById('study-link').href = safeUrl(resumeConfig.profile.socialLinks.study || '#');
+    document.getElementById('reading-link').href = safeUrl(resumeConfig.profile.socialLinks.reading || '#');
 
     // 자기소개 적용
     // 소개는 텍스트로 안전 렌더링

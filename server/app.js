@@ -733,7 +733,7 @@ function studySidebar(posts) {
   const tags = [...new Set(posts.flatMap((post) => post.tags))].sort((a, b) => a.localeCompare(b, 'ko'));
   return `<aside class="study-sidebar" id="study-sidebar" data-study-sidebar>
     <div class="sidebar-header"><div class="study-brand-group"><a class="study-brand" href="/study/">Tech Notes</a><span class="study-owner-brand">by <span>Seungje</span> <strong>Lee</strong></span></div><button class="sidebar-close" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-close>×</button></div>
-    <nav class="sidebar-nav" aria-label="학습 기록 탐색"><a class="sidebar-primary-link" href="/study/">전체 기록</a><a class="sidebar-primary-link sidebar-quiz-link" href="/study/quiz/">용어 퀴즈</a><a class="sidebar-primary-link" href="/reading/">독서 기록</a>
+    <nav class="sidebar-nav" aria-label="학습 기록 탐색"><a class="sidebar-primary-link" href="/study/">전체 기록</a><a class="sidebar-primary-link sidebar-quiz-link" href="/study/quiz/">용어 퀴즈</a>
       <form class="sidebar-search" action="/study/" role="search" data-study-search-form><label for="study-search">글 검색</label><div><input id="study-search" type="search" name="q" placeholder="제목, 카테고리, 태그" autocomplete="off" data-study-search><button type="submit" aria-label="검색">⌕</button></div></form>
       <section class="sidebar-group"><h2>카테고리</h2><div class="sidebar-categories">${databaseGroup}${standaloneCategories}</div></section>
       <section class="sidebar-group"><h2>월별 기록</h2><div class="sidebar-months">${[...months].map(([month, count]) => `<a href="/study/#month-${month}"><span>${escapeHtml(month)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
