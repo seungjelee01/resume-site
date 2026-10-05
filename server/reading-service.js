@@ -32,6 +32,7 @@ export const READING_TAGS = Object.freeze([
 
 const idPattern = /^[0-9a-f-]{36}$/i;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const publicSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const textFields = [
   ['reason', '이 책을 읽는 이유'],
   ['keyPoints', '기억할 핵심 내용'],
@@ -88,6 +89,12 @@ export function createReadingService(directory) {
     const totalPages = pageNumber(input.totalPages, '전체 페이지');
     if (currentPage !== null && totalPages !== null && currentPage > totalPages) throw new Error('현재 페이지는 전체 페이지보다 클 수 없습니다.');
     const requestedTags = Array.isArray(input.tags) ? input.tags : input.tags ? [input.tags] : [];
+    const publishValues = Array.isArray(input.published) ? input.published : [input.published];
+    const published = publishValues.some((value) => value === true || value === 'true' || value === 'on');
+    const publicSlug = text(input.publicSlug, '공개 주소', 100);
+    if (publicSlug && !publicSlugPattern.test(publicSlug)) throw new Error('공개 주소는 영문 소문자, 숫자와 하이픈만 사용할 수 있습니다.');
+    if (published && status !== 'completed') throw new Error('완독한 책만 포트폴리오에 공개할 수 있습니다.');
+    if (published && !publicSlug) throw new Error('공개할 책의 공개 주소를 입력하세요.');
     const record = {
       id: existing.id || crypto.randomUUID(),
       title: text(input.title, '책 제목', 150, true),
@@ -100,6 +107,8 @@ export function createReadingService(directory) {
       currentPage,
       totalPages,
       tags: READING_TAGS.filter((tag) => requestedTags.includes(tag)),
+      published,
+      publicSlug,
     };
     for (const [field, label] of textFields) record[field] = text(input[field], label, 5000);
     const now = new Date().toISOString();
@@ -127,10 +136,21 @@ export function createReadingService(directory) {
     }
   };
 
+  const listPublished = async () => (await list()).filter((record) => record.published && record.status === 'completed' && publicSlugPattern.test(record.publicSlug || ''));
+
+  const loadPublishedBySlug = async (slug) => {
+    if (!publicSlugPattern.test(String(slug || ''))) return null;
+    return (await listPublished()).find((record) => record.publicSlug === slug) || null;
+  };
+
   const save = async (input, id = '') => {
     const existing = id ? await load(id) : null;
     if (id && !existing) return null;
     const record = normalize(input, existing || {});
+    if (record.publicSlug) {
+      const duplicate = (await list()).find((item) => item.id !== record.id && item.publicSlug === record.publicSlug);
+      if (duplicate) throw new Error('이미 사용 중인 공개 주소입니다.');
+    }
     await ensureDirectory();
     const temporaryFile = path.join(readingDir, `.${crypto.randomUUID()}.tmp`);
     await fs.writeFile(temporaryFile, `${JSON.stringify(record, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
@@ -141,5 +161,5 @@ export function createReadingService(directory) {
 
   const remove = async (id) => fs.rm(filePath(id), { force: true });
 
-  return { list, load, save, remove };
+  return { list, listPublished, load, loadPublishedBySlug, save, remove };
 }

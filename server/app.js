@@ -185,7 +185,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'DENY');
-  if (req.path === '/study' || req.path.startsWith('/study/')) {
+  if (req.path === '/study' || req.path.startsWith('/study/') || req.path === '/reading' || req.path.startsWith('/reading/')) {
     res.setHeader('Content-Security-Policy', studyContentSecurityPolicy);
   }
   next();
@@ -452,6 +452,7 @@ app.use('/study', unifiedAuth.attachUser);
 app.use('/study', requireStudyShare);
 app.use('/study', (_req, res, next) => { res.setHeader('Cache-Control', 'private, no-store'); next(); });
 app.use('/study/assets', express.static(path.join(rootDir, 'study', 'assets'), { maxAge: '1h' }));
+app.use('/reading/assets', express.static(path.join(rootDir, 'reading', 'assets'), { maxAge: '1h' }));
 app.use('/admin/assets', express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
 const staticFiles = ['favicon-16x16.png', 'favicon-32x32.png'];
@@ -732,7 +733,7 @@ function studySidebar(posts) {
   const tags = [...new Set(posts.flatMap((post) => post.tags))].sort((a, b) => a.localeCompare(b, 'ko'));
   return `<aside class="study-sidebar" id="study-sidebar" data-study-sidebar>
     <div class="sidebar-header"><div class="study-brand-group"><a class="study-brand" href="/study/">Tech Notes</a><span class="study-owner-brand">by <span>Seungje</span> <strong>Lee</strong></span></div><button class="sidebar-close" type="button" aria-label="탐색 메뉴 닫기" data-sidebar-close>×</button></div>
-    <nav class="sidebar-nav" aria-label="학습 기록 탐색"><a class="sidebar-primary-link" href="/study/">전체 기록</a><a class="sidebar-primary-link sidebar-quiz-link" href="/study/quiz/">용어 퀴즈</a>
+    <nav class="sidebar-nav" aria-label="학습 기록 탐색"><a class="sidebar-primary-link" href="/study/">전체 기록</a><a class="sidebar-primary-link sidebar-quiz-link" href="/study/quiz/">용어 퀴즈</a><a class="sidebar-primary-link" href="/reading/">독서 기록</a>
       <form class="sidebar-search" action="/study/" role="search" data-study-search-form><label for="study-search">글 검색</label><div><input id="study-search" type="search" name="q" placeholder="제목, 카테고리, 태그" autocomplete="off" data-study-search><button type="submit" aria-label="검색">⌕</button></div></form>
       <section class="sidebar-group"><h2>카테고리</h2><div class="sidebar-categories">${databaseGroup}${standaloneCategories}</div></section>
       <section class="sidebar-group"><h2>월별 기록</h2><div class="sidebar-months">${[...months].map(([month, count]) => `<a href="/study/#month-${month}"><span>${escapeHtml(month)}</span><span class="sidebar-count">${count}</span></a>`).join('')}</div></section>
@@ -925,6 +926,12 @@ const readingSections = Object.freeze([
   ['reflection', '배운 점'],
   ['application', '실생활·학습에 적용할 점'],
 ]);
+const publicReadingSections = Object.freeze([
+  ['reason', '이 책을 읽은 이유'],
+  ['keyPoints', '기억할 핵심 내용'],
+  ['reflection', '배운 점'],
+  ['application', '업무와 학습에 적용할 점'],
+]);
 
 function readingProgress(record) {
   if (record.status === 'completed') return 100;
@@ -938,12 +945,44 @@ function readingForm(record, action, submitLabel) {
   const statusOptions = Object.entries(READING_STATUSES).map(([status, label]) => `<option value="${status}"${record.status === status ? ' selected' : ''}>${label}</option>`).join('');
   const tagFields = READING_TAGS.map((tag) => `<label><input type="checkbox" name="tags" value="${tag}"${record.tags?.includes(tag) ? ' checked' : ''}><span>${tag}</span></label>`).join('');
   const textareas = readingSections.map(([field, label]) => `<label>${label} <small>선택</small><textarea name="${field}" maxlength="5000" rows="5">${value(field)}</textarea></label>`).join('');
-  return `<form class="reading-editor" method="post" action="${action}"><div class="reading-fields"><label>책 제목<input name="title" maxlength="150" value="${value('title')}" required></label><label>저자<input name="author" maxlength="100" value="${value('author')}" required></label><label>출판사 <small>선택</small><input name="publisher" maxlength="100" value="${value('publisher')}"></label><label>독서 분야<select name="category" required>${categoryOptions}</select></label><label>독서 상태<select name="status" required>${statusOptions}</select></label></div><div class="reading-fields reading-dates"><label>시작일 <small>선택</small><input type="date" name="startDate" value="${value('startDate')}"></label><label>완독일 <small>완독 상태일 때 필수</small><input type="date" name="completedDate" value="${value('completedDate')}"></label><label>현재 페이지 <small>선택</small><input type="number" name="currentPage" min="0" max="100000" value="${value('currentPage')}"></label><label>전체 페이지 <small>선택</small><input type="number" name="totalPages" min="0" max="100000" value="${value('totalPages')}"></label></div><fieldset class="journal-tags"><legend>주제·자소서 소재 태그 <small>선택</small></legend><div>${tagFields}</div></fieldset>${textareas}<div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/reading/">취소</a></div></form>`;
+  return `<form class="reading-editor" method="post" action="${action}"><div class="reading-fields"><label>책 제목<input name="title" maxlength="150" value="${value('title')}" required></label><label>저자<input name="author" maxlength="100" value="${value('author')}" required></label><label>출판사 <small>선택</small><input name="publisher" maxlength="100" value="${value('publisher')}"></label><label>독서 분야<select name="category" required>${categoryOptions}</select></label><label>독서 상태<select name="status" required>${statusOptions}</select></label></div><div class="reading-fields reading-dates"><label>시작일 <small>선택</small><input type="date" name="startDate" value="${value('startDate')}"></label><label>완독일 <small>완독 상태일 때 필수</small><input type="date" name="completedDate" value="${value('completedDate')}"></label><label>현재 페이지 <small>선택</small><input type="number" name="currentPage" min="0" max="100000" value="${value('currentPage')}"></label><label>전체 페이지 <small>선택</small><input type="number" name="totalPages" min="0" max="100000" value="${value('totalPages')}"></label></div><fieldset class="reading-publish"><legend>포트폴리오 공개</legend><input type="hidden" name="published" value="false"><label class="reading-publish-toggle"><input type="checkbox" name="published" value="true"${record.published ? ' checked' : ''}><span>공개 독서 페이지에 표시</span></label><label>공개 주소 <small>영문 소문자, 숫자, 하이픈 · 공개할 때 필수</small><div><span>seungjelee.com/reading/</span><input name="publicSlug" maxlength="100" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value="${value('publicSlug')}" placeholder="effective-executive"></div></label><small>완독 상태인 책만 공개할 수 있으며, 관리자용 ‘인상 깊었던 부분’은 공개되지 않습니다.</small></fieldset><fieldset class="journal-tags"><legend>주제·자소서 소재 태그 <small>선택</small></legend><div>${tagFields}</div></fieldset>${textareas}<div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/reading/">취소</a></div></form>`;
 }
 
 function readingSearchText(record) {
   return [record.title, record.author, record.publisher, record.category, ...readingSections.map(([field]) => record[field]), ...(record.tags || [])].join(' ').toLocaleLowerCase('ko');
 }
+
+function publicReadingLayout(title, description, content) {
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Reading Notes · Seungje Lee</title><meta name="description" content="${escapeHtml(description)}"><meta name="theme-color" content="#172531"><link rel="icon" href="/favicon-32x32.png"><link rel="stylesheet" href="/reading/assets/reading.css?v=20261005-1"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet"></head><body><a class="reading-skip" href="#reading-content">본문으로 바로가기</a><header class="reading-header"><a href="/reading/"><strong>READING NOTES</strong><span>by Seungje Lee</span></a></header><main id="reading-content">${content}</main><footer class="reading-footer"><span>SEUNGJE LEE</span><a href="/privacy">개인정보 처리방침</a></footer></body></html>`;
+}
+
+app.get(['/reading', '/reading/'], async (_req, res, next) => {
+  try {
+    const books = await readingService.listPublished();
+    const cards = books.map((book) => {
+      const tags = (book.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
+      const summary = book.reflection || book.keyPoints || book.reason || '';
+      return `<article class="public-reading-card"><div><span>${escapeHtml(book.category)}</span><time datetime="${escapeHtml(book.completedDate)}">${escapeHtml(book.completedDate.replaceAll('-', '. '))}</time></div><h2><a href="/reading/${encodeURIComponent(book.publicSlug)}/">${escapeHtml(book.title)}</a></h2><p class="public-reading-author">${escapeHtml(book.author)}${book.publisher ? ` · ${escapeHtml(book.publisher)}` : ''}</p>${summary ? `<p>${escapeHtml(summary.slice(0, 180))}${summary.length > 180 ? '…' : ''}</p>` : ''}<div class="public-reading-tags">${tags}</div></article>`;
+    }).join('');
+    const archive = cards || '<section class="public-reading-empty"><h2>공개된 독서 기록이 없습니다.</h2></section>';
+    const content = `<header class="public-reading-intro"><p>READ · THINK · APPLY</p><h1>읽고 생각한 것을<br>업무와 학습에 연결합니다.</h1><p>책에서 얻은 관점과 원칙을 DBE·DBA 업무, 문제 해결과 성장에 어떻게 적용할지 기록합니다.</p></header><section class="public-reading-list" aria-label="공개 독서 기록">${archive}</section>`;
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.send(publicReadingLayout('독서 기록', '책에서 얻은 관점과 원칙을 업무와 학습에 연결한 Seungje Lee의 독서 기록', content));
+  } catch (error) { next(error); }
+});
+
+app.get('/reading/:slug/', async (req, res, next) => {
+  try {
+    const book = await readingService.loadPublishedBySlug(req.params.slug);
+    if (!book) return res.status(404).send('Not found');
+    const tags = (book.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
+    const sections = publicReadingSections.filter(([field]) => book[field]).map(([field, label]) => `<section><h2>${label}</h2><p>${escapeHtml(book[field])}</p></section>`).join('');
+    const meta = [book.author, book.publisher, book.completedDate ? `${book.completedDate.replaceAll('-', '. ')} 완독` : ''].filter(Boolean).map(escapeHtml).join(' · ');
+    const content = `<article class="public-reading-entry"><header><p>${escapeHtml(book.category)}</p><h1>${escapeHtml(book.title)}</h1><div class="public-reading-meta">${meta}</div><div class="public-reading-tags">${tags}</div></header>${sections || '<p class="public-reading-empty-note">공개된 독서 노트가 없습니다.</p>'}<footer><a href="/reading/">← 전체 독서 기록</a></footer></article>`;
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.send(publicReadingLayout(book.title, (book.reflection || book.keyPoints || book.reason || book.title).slice(0, 150), content));
+  } catch (error) { next(error); }
+});
 
 function selfInsightProfileForm(profile) {
   const fields = SELF_INSIGHT_PROFILE_FIELDS.map(([field, label]) => `<label>${label} <small>선택</small><textarea name="${field}" maxlength="${field === 'oneLineIntro' ? 200 : 5000}" rows="${field === 'oneLineIntro' ? 3 : 6}">${escapeHtml(profile[field] || '')}</textarea></label>`).join('');
@@ -1241,7 +1280,7 @@ app.get('/admin/reading/', async (req, res, next) => {
     const cards = books.map((book) => {
       const progress = readingProgress(book);
       const dates = book.completedDate ? `${book.startDate || '시작일 미입력'} → ${book.completedDate}` : book.startDate || '독서일 미입력';
-      return `<article class="reading-card"><header><span>${escapeHtml(book.category)}</span><b class="reading-status is-${book.status}">${READING_STATUSES[book.status]}</b></header><h2><a href="/admin/reading/${book.id}/">${escapeHtml(book.title)}</a></h2><p class="reading-author">${escapeHtml(book.author)}${book.publisher ? ` · ${escapeHtml(book.publisher)}` : ''}</p><small>${escapeHtml(dates)}</small>${progress === null ? '' : `<div class="reading-progress" aria-label="독서 진행률 ${progress}%"><i style="width:${progress}%"></i></div><small>${progress}%${book.totalPages ? ` · ${book.currentPage ?? 0}/${book.totalPages}쪽` : ''}</small>`}<div class="reading-card-tags">${(book.tags || []).map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div></article>`;
+      return `<article class="reading-card"><header><span>${escapeHtml(book.category)}</span><div>${book.published ? '<b class="reading-public-status">공개</b>' : ''}<b class="reading-status is-${book.status}">${READING_STATUSES[book.status]}</b></div></header><h2><a href="/admin/reading/${book.id}/">${escapeHtml(book.title)}</a></h2><p class="reading-author">${escapeHtml(book.author)}${book.publisher ? ` · ${escapeHtml(book.publisher)}` : ''}</p><small>${escapeHtml(dates)}</small>${progress === null ? '' : `<div class="reading-progress" aria-label="독서 진행률 ${progress}%"><i style="width:${progress}%"></i></div><small>${progress}%${book.totalPages ? ` · ${book.currentPage ?? 0}/${book.totalPages}쪽` : ''}</small>`}<div class="reading-card-tags">${(book.tags || []).map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div></article>`;
     }).join('');
     const body = cards || '<p class="reading-empty">조건에 맞는 독서 기록이 없습니다.</p>';
     const content = `<div class="admin-title"><div><p>PRIVATE READING LOG</p><h1>독서 기록</h1></div><a class="button primary" href="/admin/reading/new">책 추가</a></div><div class="reading-metrics"><section class="${completedThisMonth ? 'is-achieved' : ''}"><span>이번 달 목표</span><strong>${completedThisMonth}/1권</strong><small>${completedThisMonth ? '목표 달성' : '완독까지 1권'}</small></section><section><span>전체 완독</span><strong>${completedTotal}권</strong><small>누적 기록</small></section><section><span>읽는 중</span><strong>${readingCount}권</strong><small>현재 독서</small></section><section><span>읽을 예정</span><strong>${plannedCount}권</strong><small>다음 독서</small></section></div><div class="reading-overview"><section><h2>분야별 완독</h2><div class="reading-category-summary">${categorySummary}</div></section><section><h2>현재 읽는 책</h2><div class="reading-quick-books">${bookLinks(currentBooks, '현재 읽는 책이 없습니다.')}</div></section><section><h2>다음에 읽을 책</h2><div class="reading-quick-books">${bookLinks(nextBooks, '읽을 예정인 책이 없습니다.')}</div></section></div><form class="reading-filter" method="get"><label>검색<input type="search" name="q" value="${escapeHtml(query)}" placeholder="책, 저자 또는 기록 검색"></label><label>분야<select name="category"><option value="">전체</option>${categoryOptions}</select></label><label>상태<select name="status"><option value="">전체</option>${statusOptions}</select></label><button class="button" type="submit">찾기</button>${query || category || status ? '<a class="button" href="/admin/reading/">초기화</a>' : ''}</form><p class="reading-count">${books.length}권의 기록</p><div class="reading-list">${body}</div>`;
@@ -1271,7 +1310,8 @@ app.get('/admin/reading/:id/', async (req, res, next) => {
     const details = `<dl class="reading-details"><div><dt>저자</dt><dd>${escapeHtml(book.author)}</dd></div><div><dt>출판사</dt><dd>${escapeHtml(book.publisher || '미입력')}</dd></div><div><dt>분야</dt><dd>${escapeHtml(book.category)}</dd></div><div><dt>상태</dt><dd>${READING_STATUSES[book.status]}</dd></div><div><dt>독서 기간</dt><dd>${escapeHtml(book.startDate || '미입력')} → ${escapeHtml(book.completedDate || '진행 중')}</dd></div><div><dt>진행률</dt><dd>${progress === null ? '미입력' : `${progress}%${book.totalPages ? ` · ${book.currentPage ?? 0}/${book.totalPages}쪽` : ''}`}</dd></div></dl>`;
     const tags = (book.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
     const sections = readingSections.filter(([field]) => book[field]).map(([field, label]) => `<section><h2>${label}</h2><p>${escapeHtml(book[field])}</p></section>`).join('');
-    const content = `<div class="admin-title"><div><p>${escapeHtml(book.category)} · ${READING_STATUSES[book.status]}</p><h1>${escapeHtml(book.title)}</h1></div><a class="button" href="/admin/reading/${book.id}/edit">수정</a></div><article class="reading-entry">${details}<div class="reading-entry-tags">${tags}</div>${sections || '<p class="reading-empty-note">아직 작성한 독서 노트가 없습니다.</p>'}</article><form class="delete-form" method="post" action="/admin/reading/${book.id}/delete" onsubmit="return confirm('이 독서 기록을 삭제할까요? 삭제 후 복구할 수 없습니다.')"><button class="button danger" type="submit">삭제</button></form>`;
+    const publicLink = book.published ? `<a class="button" href="/reading/${encodeURIComponent(book.publicSlug)}/" target="_blank" rel="noopener">공개 페이지 보기 ↗</a>` : '';
+    const content = `<div class="admin-title"><div><p>${escapeHtml(book.category)} · ${READING_STATUSES[book.status]}${book.published ? ' · 포트폴리오 공개' : ''}</p><h1>${escapeHtml(book.title)}</h1></div><div class="actions">${publicLink}<a class="button" href="/admin/reading/${book.id}/edit">수정</a></div></div><article class="reading-entry">${details}<div class="reading-entry-tags">${tags}</div>${sections || '<p class="reading-empty-note">아직 작성한 독서 노트가 없습니다.</p>'}</article><form class="delete-form" method="post" action="/admin/reading/${book.id}/delete" onsubmit="return confirm('이 독서 기록을 삭제할까요? 삭제 후 복구할 수 없습니다.')"><button class="button danger" type="submit">삭제</button></form>`;
     res.send(adminLayout(book.title, content, res.locals.adminEmail, 'reading'));
   } catch (error) { next(error); }
 });

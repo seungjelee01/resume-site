@@ -147,6 +147,20 @@
     font-size: 12px;
 }
 
+.reading-card header > div {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.reading-public-status {
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: #39744d;
+    background: color-mix(in srgb, #4d9465 14%, var(--surface));
+    font-size: 11px;
+}
+
 .reading-status {
     padding: 3px 8px;
     border-radius: 999px;
@@ -264,6 +278,58 @@
     font: 14px/1.75 var(--sans);
 }
 
+.reading-publish {
+    display: grid;
+    gap: 13px;
+    margin: 0;
+    padding: 18px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+}
+
+.reading-publish legend {
+    padding: 0 7px;
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.reading-publish > label {
+    display: grid;
+    gap: 7px;
+    color: var(--ink);
+    font-weight: 650;
+}
+
+.reading-publish > label.reading-publish-toggle {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.reading-publish-toggle input { width: 17px; height: 17px; }
+
+.reading-publish > label > div {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+}
+
+.reading-publish > label > div span {
+    flex: none;
+    padding-left: 12px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.reading-publish > label > div input {
+    min-width: 0;
+    border: 0;
+    box-shadow: none;
+}
+
+.reading-publish small { color: var(--muted); font-weight: 400; }
+
 .reading-entry {
     padding: 24px;
     border: 1px solid var(--line);
@@ -364,4 +430,7 @@
     .reading-fields label:first-child {
         grid-column: auto;
     }
+
+    .reading-publish > label > div { align-items: stretch; flex-direction: column; }
+    .reading-publish > label > div span { padding: 9px 12px 0; }
 }
