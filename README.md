@@ -14,7 +14,7 @@ The public repository contains the application code and UI implementation. Resum
 - Per-note visitor comments and one-level replies with administration management
 - Anonymous real-time inquiries with private administrator chat rooms
 - Privacy-friendly first-party Tech Notes visitor analytics
-- Python, SQL, PDF, and image upload validation
+- Python, SQL, PDF, image, and private archive upload validation
 - Independent private share links for the resume and Tech Notes
 - Persistent content storage separated from application releases
 - Sanitized Markdown rendering and escaped source-code previews

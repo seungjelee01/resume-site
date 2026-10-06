@@ -102,8 +102,9 @@ const selfInsightService = createSelfInsightService(selfInsightDir);
 const practiceService = createPracticeService(practiceDir);
 const quizService = createQuizService(quizDir);
 const attachmentNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|pdf|png|jpe?g|gif|webp)$/iu;
-const privateFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp)$/iu;
+const privateFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp|zip|7z|rar|tar|gz|tgz)$/iu;
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+const archiveExtensions = new Set(['.zip', '.7z', '.rar', '.tar', '.gz', '.tgz']);
 
 function normalizeUploadFilename(filename) {
   const name = String(filename || '').normalize('NFC');
@@ -128,8 +129,8 @@ const attachmentUpload = multer({
 });
 const privateFileUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024, files: 5 },
-  fileFilter: uploadFileFilter(privateFileNamePattern, '지원하는 Python, SQL, TXT, PDF 또는 이미지 파일만 업로드할 수 있습니다.'),
+  limits: { fileSize: 100 * 1024 * 1024, files: 5 },
+  fileFilter: uploadFileFilter(privateFileNamePattern, '지원하는 Python, SQL, TXT, PDF, 이미지 또는 압축 파일만 업로드할 수 있습니다.'),
 });
 
 marked.setOptions({ gfm: true, breaks: false });
@@ -544,7 +545,22 @@ function imageMimeType(extension) {
   return { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' }[extension];
 }
 
-function prepareUploadedFile(file, { allowSql = false, allowTxt = false } = {}) {
+function validArchiveBuffer(extension, buffer) {
+  if (extension === '.zip') {
+    const signature = buffer.subarray(0, 4).toString('hex');
+    return ['504b0304', '504b0506', '504b0708'].includes(signature);
+  }
+  if (extension === '.7z') return buffer.subarray(0, 6).equals(Buffer.from('377abcaf271c', 'hex'));
+  if (extension === '.rar') {
+    return buffer.subarray(0, 7).equals(Buffer.from('526172211a0700', 'hex'))
+      || buffer.subarray(0, 8).equals(Buffer.from('526172211a070100', 'hex'));
+  }
+  if (extension === '.gz' || extension === '.tgz') return buffer.subarray(0, 2).equals(Buffer.from('1f8b', 'hex'));
+  if (extension === '.tar') return buffer.length >= 512 && buffer.subarray(257, 262).toString('ascii') === 'ustar';
+  return false;
+}
+
+function prepareUploadedFile(file, { allowSql = false, allowTxt = false, allowArchives = false } = {}) {
   const extension = path.extname(file.originalname).toLowerCase();
   if (extension === '.py' || (allowSql && extension === '.sql') || (allowTxt && extension === '.txt')) {
     const isPrivateText = extension === '.sql' || extension === '.txt';
@@ -565,6 +581,12 @@ function prepareUploadedFile(file, { allowSql = false, allowTxt = false } = {}) 
     if (!validImageBuffer(extension, file.buffer)) throw new Error('올바른 이미지 파일만 업로드할 수 있습니다.');
     return { filename: file.originalname, content: file.buffer };
   }
+  if (allowArchives && archiveExtensions.has(extension)) {
+    if (file.size > 100 * 1024 * 1024) throw new Error('압축 파일은 100MB 이하만 업로드할 수 있습니다.');
+    if (!validArchiveBuffer(extension, file.buffer)) throw new Error('확장자와 형식이 일치하는 올바른 압축 파일만 업로드할 수 있습니다.');
+    return { filename: file.originalname, content: file.buffer };
+  }
+  if (file.size > 15 * 1024 * 1024) throw new Error('PDF 파일은 15MB 이하만 업로드할 수 있습니다.');
   if (file.buffer.subarray(0, 5).toString('ascii') !== '%PDF-') throw new Error('올바른 PDF 파일만 업로드할 수 있습니다.');
   return { filename: file.originalname, content: file.buffer };
 }
@@ -1623,11 +1645,11 @@ app.get('/admin/files/', async (_req, res, next) => {
     const files = await loadPrivateFiles();
     const rows = files.map((file) => {
       const extension = path.extname(file.filename).toLowerCase();
-      const action = extension === '.pdf' ? '다운로드' : '보기';
+      const action = extension === '.pdf' || archiveExtensions.has(extension) ? '다운로드' : '보기';
       return `<tr><td><code>${escapeHtml(file.filename)}</code></td><td>${formatFileSize(file.size)}</td><td>${file.modified.slice(0, 10)}</td><td><a href="/admin/files/${encodeURIComponent(file.filename)}">${action}</a></td><td><form method="post" action="/admin/files/${encodeURIComponent(file.filename)}/delete" onsubmit="return confirm('이 파일을 삭제할까요?')"><button class="button danger" type="submit">삭제</button></form></td></tr>`;
     }).join('');
     const empty = files.length ? '' : '<p class="private-empty">저장된 파일이 없습니다.</p>';
-    const content = `<div class="admin-title"><div><p>PRIVATE FILE STORAGE</p><h1>비공개 파일 저장소</h1></div></div><form class="private-upload" method="post" enctype="multipart/form-data" action="/admin/files/upload"><label>파일 선택 <small>.py 512KB · .sql/.txt 2MB · 이미지 5MB · .pdf 15MB 이하 · 최대 5개</small><input type="file" name="privateFiles" accept=".py,.sql,.txt,.pdf,.png,.jpg,.jpeg,.gif,.webp,text/x-python,application/sql,text/plain,application/pdf,image/png,image/jpeg,image/gif,image/webp" multiple required></label><button class="button primary" type="submit">업로드</button></form>${empty}<div class="table-wrap private-files-table"><table><thead><tr><th>파일명</th><th>크기</th><th>수정일</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    const content = `<div class="admin-title"><div><p>PRIVATE FILE STORAGE</p><h1>비공개 파일 저장소</h1></div></div><form class="private-upload" method="post" enctype="multipart/form-data" action="/admin/files/upload"><label>파일 선택 <small>.py 512KB · .sql/.txt 2MB · 이미지 5MB · .pdf 15MB · 압축 파일 100MB 이하 · 최대 5개</small><input type="file" name="privateFiles" accept=".py,.sql,.txt,.pdf,.png,.jpg,.jpeg,.gif,.webp,.zip,.7z,.rar,.tar,.gz,.tgz,text/x-python,application/sql,text/plain,application/pdf,image/png,image/jpeg,image/gif,image/webp,application/zip,application/x-7z-compressed,application/vnd.rar,application/x-tar,application/gzip" multiple required></label><button class="button primary" type="submit">업로드</button></form>${empty}<div class="table-wrap private-files-table"><table><thead><tr><th>파일명</th><th>크기</th><th>수정일</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
     res.send(adminLayout('비공개 파일 저장소', content, res.locals.adminEmail, 'files'));
   } catch (error) { next(error); }
 });
@@ -1640,7 +1662,7 @@ app.get('/admin/files/:filename', async (req, res, next) => {
     const filePath = path.join(privateFilesDir, req.params.filename);
     const extension = path.extname(req.params.filename).toLowerCase();
     res.setHeader('Cache-Control', 'private, no-store');
-    if (extension === '.pdf') return res.download(filePath, req.params.filename);
+    if (extension === '.pdf' || archiveExtensions.has(extension)) return res.download(filePath, req.params.filename);
     if (imageExtensions.has(extension)) {
       res.type(imageMimeType(extension));
       return res.sendFile(filePath);
@@ -1653,7 +1675,7 @@ app.get('/admin/files/:filename', async (req, res, next) => {
 
 app.post('/admin/files/upload', privateFileUpload.array('privateFiles', 5), async (req, res, next) => {
   try {
-    const files = (req.files || []).map((file) => prepareUploadedFile(file, { allowSql: true, allowTxt: true }));
+    const files = (req.files || []).map((file) => prepareUploadedFile(file, { allowSql: true, allowTxt: true, allowArchives: true }));
     if (!files.length) throw new Error('업로드할 파일을 선택하세요.');
     await storeUploadedFiles(files, privateFilesDir);
     res.redirect('/admin/files/');
