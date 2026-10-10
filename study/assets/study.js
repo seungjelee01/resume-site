@@ -18,7 +18,9 @@ function initStudyChat() {
     if (!panel || !openButton || !closeButton || !status || !messages || !form || !input || !unreadBadge) return;
     let socket;
     let reconnectTimer;
-    let initialized = false;
+    let connectPromise;
+    let sessionRequest;
+    let lastSessionRefresh = 0;
     let conversationId = '';
     let adminMessages = [];
     const notificationPreferenceKey = 'study-chat-notifications';
@@ -96,50 +98,98 @@ function initStudyChat() {
         messages.append(item);
         messages.scrollTop = messages.scrollHeight;
     };
-    const connect = async () => {
-        try {
-            if (!initialized) {
-                const response = await fetch('/study/chat/session/', { credentials: 'same-origin' });
+    const loadSession = () => {
+        if (sessionRequest) return sessionRequest;
+        sessionRequest = fetch('/study/chat/session/', { credentials: 'same-origin', cache: 'no-store' })
+            .then((response) => {
                 if (!response.ok) throw new Error('문의 세션을 만들 수 없습니다.');
-                initialized = true;
-            }
-            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            socket = new WebSocket(`${protocol}//${location.host}/study/ws/chat`);
-            status.textContent = '연결 중';
-            socket.addEventListener('open', () => { status.textContent = '온라인'; });
-            socket.addEventListener('message', (event) => {
-                const payload = JSON.parse(event.data);
-                if (payload.type === 'ready') {
-                    conversationId = payload.id;
-                    status.textContent = `온라인 · ${payload.visitorLabel}`;
-                    adminMessages = payload.messages.filter((message) => message.sender === 'admin');
-                    if (payload.messages.some((message) => message.sender === 'visitor')) localStorage.setItem('study-chat-has-session', 'true');
-                    messages.replaceChildren();
-                    payload.messages.forEach(renderMessage);
+                return response.json();
+            })
+            .then((session) => {
+                if (!session?.id) throw new Error('문의 세션을 확인할 수 없습니다.');
+                return session;
+            })
+            .finally(() => { sessionRequest = undefined; });
+        return sessionRequest;
+    };
+    const openSocket = () => {
+        if (socket && socket.readyState <= WebSocket.OPEN) return;
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const currentSocket = new WebSocket(`${protocol}//${location.host}/study/ws/chat`);
+        socket = currentSocket;
+        status.textContent = '연결 중';
+        currentSocket.addEventListener('open', () => {
+            if (socket === currentSocket) status.textContent = '온라인';
+        });
+        currentSocket.addEventListener('message', (event) => {
+            if (socket !== currentSocket) return;
+            const payload = JSON.parse(event.data);
+            if (payload.type === 'ready') {
+                conversationId = payload.id;
+                status.textContent = `온라인 · ${payload.visitorLabel}`;
+                adminMessages = payload.messages.filter((message) => message.sender === 'admin');
+                if (payload.messages.some((message) => message.sender === 'visitor')) localStorage.setItem('study-chat-has-session', 'true');
+                messages.replaceChildren();
+                payload.messages.forEach(renderMessage);
+                if (panel.hidden) updateUnread();
+                else markRead();
+            } else if (payload.type === 'message') {
+                renderMessage(payload.message);
+                if (payload.message.sender === 'admin') {
+                    adminMessages.push(payload.message);
                     if (panel.hidden) updateUnread();
                     else markRead();
-                } else if (payload.type === 'message') {
-                    renderMessage(payload.message);
-                    if (payload.message.sender === 'admin') {
-                        adminMessages.push(payload.message);
-                        if (panel.hidden) updateUnread();
-                        else markRead();
-                        notifyAdminReply(payload.message);
-                    }
-                } else if (payload.type === 'message-deleted') {
-                    messages.querySelector(`[data-message-id="${CSS.escape(payload.messageId)}"]`)?.remove();
-                    adminMessages = adminMessages.filter((message) => message.id !== payload.messageId);
-                    updateUnread();
+                    notifyAdminReply(payload.message);
                 }
-                else if (payload.type === 'error') status.textContent = payload.message;
-            });
-            socket.addEventListener('close', () => {
-                status.textContent = '재연결 중';
-                initialized = false;
-                clearTimeout(reconnectTimer);
-                reconnectTimer = setTimeout(connect, 2000);
-            });
+            } else if (payload.type === 'message-deleted') {
+                messages.querySelector(`[data-message-id="${CSS.escape(payload.messageId)}"]`)?.remove();
+                adminMessages = adminMessages.filter((message) => message.id !== payload.messageId);
+                updateUnread();
+            }
+            else if (payload.type === 'error') status.textContent = payload.message;
+        });
+        currentSocket.addEventListener('close', () => {
+            if (socket !== currentSocket) return;
+            socket = undefined;
+            status.textContent = '재연결 중';
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connect, 2000);
+        });
+    };
+    const connect = () => {
+        if (socket && socket.readyState <= WebSocket.OPEN) return Promise.resolve();
+        if (connectPromise) return connectPromise;
+        connectPromise = loadSession()
+            .then(openSocket)
+            .catch((error) => { status.textContent = error.message; })
+            .finally(() => { connectPromise = undefined; });
+        return connectPromise;
+    };
+    const refreshSession = async () => {
+        try {
+            const session = await loadSession();
+            if (!conversationId || session.id === conversationId) return;
+            clearTimeout(reconnectTimer);
+            const previousSocket = socket;
+            socket = undefined;
+            conversationId = '';
+            adminMessages = [];
+            messages.replaceChildren();
+            status.textContent = '연결 중';
+            previousSocket?.close();
+            openSocket();
         } catch (error) { status.textContent = error.message; }
+    };
+    const refreshSessionWhenActive = () => {
+        if (document.hidden) return;
+        if (!socket || socket.readyState > WebSocket.OPEN) {
+            if (!panel.hidden || localStorage.getItem('study-chat-has-session') === 'true') connect();
+            return;
+        }
+        const now = Date.now();
+        if (now - lastSessionRefresh < 1000) return;
+        lastSessionRefresh = now;
+        refreshSession();
     };
     openButton.addEventListener('click', () => {
         panel.hidden = false;
@@ -163,6 +213,9 @@ function initStudyChat() {
         localStorage.setItem('study-chat-has-session', 'true');
         input.value = '';
     });
+    window.addEventListener('focus', refreshSessionWhenActive);
+    window.addEventListener('pageshow', refreshSessionWhenActive);
+    document.addEventListener('visibilitychange', refreshSessionWhenActive);
     if (localStorage.getItem('study-chat-has-session') === 'true') connect();
 }
 
