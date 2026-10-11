@@ -560,6 +560,11 @@ a {
     font-size: 17px;
 }
 
+.study-note[data-copy-protected] .study-note-content {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 .study-note-content h2,
 .study-note-content h3 {
     margin: 2em 0 0.7em;

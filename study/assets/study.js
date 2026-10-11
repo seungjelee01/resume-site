@@ -10,8 +10,18 @@ document.addEventListener('DOMContentLoaded', () => {
     initStudySidebar();
     initStudyTagDisclosure();
     initStudyTagFilter();
+    initStudyCopyProtection();
     initStudyChat();
 });
+
+function initStudyCopyProtection() {
+    const content = document.querySelector('[data-copy-protected] .study-note-content');
+    if (!content) return;
+    for (const eventName of ['copy', 'cut', 'dragstart']) {
+        content.addEventListener(eventName, (event) => event.preventDefault());
+    }
+    content.querySelectorAll('img').forEach((image) => { image.draggable = false; });
+}
 
 function initStudyChat() {
     const panel = document.querySelector('[data-chat]');
