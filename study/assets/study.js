@@ -1,3 +1,10 @@
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+window.addEventListener('pageshow', () => {
+    if (location.hash) return;
+    requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     initStudyTheme();
     initStudySidebar();
