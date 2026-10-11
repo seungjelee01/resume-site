@@ -34,7 +34,7 @@ function publicConversation(conversation) {
   };
 }
 
-export function createChatService({ directory, production, allowLocalAdmin, verifyAdmin, canAccessStudy, getPortalUser, notify, limits }) {
+export function createChatService({ directory, production, allowLocalAdmin, verifyAdmin, canAccessStudy, getPortalUser, notify, isVisitorMessageRateLimitEnabled = () => true, limits }) {
   const clients = new Map();
   const adminListClients = new Set();
   const pendingSessions = new Map();
@@ -402,7 +402,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
               if (!portalUser || portalUser.id !== conversation.portalUserId) return socket.close(1008, 'login required');
             } else if (!(await canAccessStudy(cookies))) return socket.close(1008, 'access required');
           }
-          enforceRate(`${id}:${isAdmin ? 'admin' : 'visitor'}`);
+          if (isAdmin || isVisitorMessageRateLimitEnabled()) enforceRate(`${id}:${isAdmin ? 'admin' : 'visitor'}`);
           const maxLength = isAdmin ? adminMessageMaxLength : visitorMessageMaxLength;
           const message = { id: crypto.randomUUID(), sender: isAdmin ? 'admin' : 'visitor', content: normalize(input.content, maxLength), createdAt: new Date().toISOString() };
           const saved = await update(id, async () => {
