@@ -17,6 +17,7 @@ import { classScheduleForDate } from './class-schedule.js';
 import { createJournalService, JOURNAL_TAGS } from './journal-service.js';
 import { createReadingService, READING_CATEGORIES, READING_STATUSES, READING_TAGS } from './reading-service.js';
 import { createPracticeService, PRACTICE_BACKLOG_CATEGORIES, PRACTICE_TIME_CATEGORIES } from './practice-service.js';
+import { createScheduleService, SCHEDULE_CATEGORIES, SCHEDULE_STATUSES } from './schedule-service.js';
 import { createSelfInsightService, SELF_INSIGHT_CATEGORIES, SELF_INSIGHT_PROFILE_FIELDS, SELF_INSIGHT_STAR_FIELDS } from './self-insight-service.js';
 import { createQuizService } from './quiz-service.js';
 import { loadDiskStatus, loadServiceStatuses } from './service-status.js';
@@ -79,6 +80,11 @@ const practiceDir = process.env.PRACTICE_DIR
   : process.env.STUDY_DIR
     ? path.join(path.dirname(postsDir), 'practice')
     : path.join(rootDir, '_practice');
+const scheduleDir = process.env.SCHEDULE_DIR
+  ? path.resolve(process.env.SCHEDULE_DIR)
+  : process.env.STUDY_DIR
+    ? path.join(path.dirname(postsDir), 'schedule')
+    : path.join(rootDir, '_schedule');
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN === 'true';
@@ -102,6 +108,7 @@ const journalService = createJournalService(journalDir);
 const readingService = createReadingService(readingDir);
 const selfInsightService = createSelfInsightService(selfInsightDir);
 const practiceService = createPracticeService(practiceDir);
+const scheduleService = createScheduleService(scheduleDir);
 const quizService = createQuizService(quizDir);
 const attachmentNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|pdf|png|jpe?g|gif|webp)$/iu;
 const privateFileNamePattern = /^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,179}\.(?:py|sql|txt|pdf|png|jpe?g|gif|webp|zip|7z|rar|tar|gz|tgz)$/iu;
@@ -1047,6 +1054,25 @@ function selfInsightCopyText(record) {
   return lines.join('\n');
 }
 
+function scheduleMonth(value, fallback = todayInSeoul().slice(0, 7)) {
+  const month = String(value || '');
+  return /^\d{4}-(?:0[1-9]|1[0-2])$/.test(month) ? month : fallback;
+}
+
+function shiftScheduleMonth(month, amount) {
+  const date = new Date(`${month}-01T00:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() + amount);
+  return date.toISOString().slice(0, 7);
+}
+
+function scheduleForm(record, action, submitLabel) {
+  const value = (field) => escapeHtml(record[field] || '');
+  const categories = SCHEDULE_CATEGORIES.map((category) => `<option value="${category}"${record.category === category ? ' selected' : ''}>${category}</option>`).join('');
+  const statusLabels = { planned: '예정', completed: '완료', canceled: '취소' };
+  const statuses = SCHEDULE_STATUSES.map((status) => `<option value="${status}"${record.status === status ? ' selected' : ''}>${statusLabels[status]}</option>`).join('');
+  return `<form class="schedule-editor" method="post" action="${action}"><label>일정 제목<input name="title" maxlength="150" value="${value('title')}" required></label><div class="schedule-editor-grid"><label>날짜<input type="date" name="date" value="${value('date')}" required></label><label>학습 분야<select name="category" required>${categories}</select></label><label>시작 시간 <small>선택</small><input type="time" name="startTime" value="${value('startTime')}"></label><label>종료 시간 <small>선택 · 시작 시간과 함께 입력</small><input type="time" name="endTime" value="${value('endTime')}"></label><label>상태<select name="status">${statuses}</select></label></div><label>메모 <small>선택</small><textarea name="notes" maxlength="3000" rows="7">${value('notes')}</textarea></label><div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/schedule/?month=${encodeURIComponent(record.date.slice(0, 7))}">취소</a></div></form>`;
+}
+
 function quizForm(question, posts, action, submitLabel) {
   const postOptions = posts.map((post) => `<option value="${escapeHtml(post.slug)}"${question.relatedSlug === post.slug ? ' selected' : ''}>${escapeHtml(post.title)}</option>`).join('');
   return `<form class="quiz-editor editor" method="post" action="${action}"><label>문제 설명<textarea name="prompt" maxlength="500" rows="5" required>${escapeHtml(question.prompt || '')}</textarea></label><label>허용 정답 <small>한 줄에 하나씩 입력하며 표기가 다른 정답도 판정과 정답 안내에 사용합니다.</small><textarea name="answers" maxlength="1000" rows="5" required>${escapeHtml((question.answers || []).join('\n'))}</textarea></label><div class="field-row"><label>카테고리<input name="category" maxlength="40" value="${escapeHtml(question.category || 'Oracle')}" required></label><label>관련 글<select name="relatedSlug"><option value="">선택하지 않음</option>${postOptions}</select></label></div><label class="quiz-active"><input type="checkbox" name="active"${question.active !== false ? ' checked' : ''}><span>Tech Notes 퀴즈에 공개</span></label><div class="actions"><button class="button primary" type="submit">${submitLabel}</button><a class="button" href="/admin/quizzes/">취소</a></div></form>`;
@@ -1062,6 +1088,7 @@ function adminLayout(title, content, email, activeSection = '') {
     files: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
     aiUsers: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 8h5M18.5 5.5v5"/></svg>',
     practice: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4L19 6"/><path d="M4 21h16M12 3v4"/></svg>',
+    schedule: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18M8 14h2M14 14h2M8 18h2"/></svg>',
     selfInsight: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 4l2-2M6 4 4 2"/></svg>',
     journal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5z"/><path d="M9 3v18M12 8h4M12 12h4"/></svg>',
     reading: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v18H7.5A3.5 3.5 0 0 0 4 23z"/><path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v18h4.5A3.5 3.5 0 0 1 20 23z"/></svg>',
@@ -1083,7 +1110,7 @@ function adminLayout(title, content, email, activeSection = '') {
   const copyProtectionChecked = (siteSettingsCache?.studyCopyProtection ?? defaultSiteSettings.studyCopyProtection) ? ' checked' : '';
   const chatVisitorRateLimitChecked = (siteSettingsCache?.chatVisitorRateLimit ?? defaultSiteSettings.chatVisitorRateLimit) ? ' checked' : '';
   const pageTitle = title === '대시보드' ? 'Administration Console · Seungje Lee' : `${escapeHtml(title)} · Administration Console`;
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260920-1"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260918-1"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-reading.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-self-insight.css?v=20260927-3"><link rel="stylesheet" href="/admin/assets/admin-practice.css?v=20260927-4"><script src="/admin/assets/admin-self-insight.js?v=20260927-1" defer></script><script src="/admin/assets/admin-settings.js?v=20261011-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}${navItem('aiUsers', '/admin/ai-chat-users/', '사용자 관리')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('selfInsight', '/admin/self-insight/', '자기 이해')}${navItem('practice', '/admin/practice/', '실천 관리')}${navItem('journal', '/admin/journal/', '일기')}${navItem('reading', '/admin/reading/', '독서')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-notifications"><h3>문의 알림</h3><label><input type="checkbox" data-admin-chat-notifications><span>새 문의를 데스크톱 알림으로 받기</span></label><small data-admin-chat-notification-status>브라우저가 열려 있을 때만 알림을 받을 수 있습니다.</small></section><section class="admin-settings-access"><h3>사용자 문의</h3><input type="hidden" name="chatVisitorRateLimit" value="false"><label><input type="checkbox" name="chatVisitorRateLimit" value="true"${chatVisitorRateLimitChecked}> 사용자 메시지를 10분당 20개로 제한</label><small>끄면 사용자 메시지의 10분당 전송 제한만 해제됩니다. 문의당 최대 저장 메시지 수는 유지됩니다.</small></section><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label>공개 방식<select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label><input type="hidden" name="studyGoogleAccess" value="false"><label><input type="checkbox" name="studyGoogleAccess" value="true"${googleAccessChecked}> Google 로그인 사용자 접근 허용</label>${studyShareToken ? '<small>공유 링크 모드에서 이 옵션을 끄면 로그인 사용자도 공유 링크가 필요합니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-access"><h3>Tech Notes 콘텐츠</h3><input type="hidden" name="studyCopyProtection" value="false"><label><input type="checkbox" name="studyCopyProtection" value="true"${copyProtectionChecked}> 글 본문 드래그·복사 제한</label><small>공개 글 본문의 선택, 복사, 이미지 드래그를 제한합니다. 브라우저 기능을 통한 완전한 복사 방지는 아닙니다.</small></section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${pageTitle}</title><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"><link rel="stylesheet" href="/admin/assets/admin.css?v=20260818-2"><link rel="stylesheet" href="/admin/assets/admin-attachments.css?v=20260920-1"><link rel="stylesheet" href="/admin/assets/admin-shell.css?v=20260918-1"><link rel="stylesheet" href="/admin/assets/admin-journal.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-reading.css?v=20260902-2"><link rel="stylesheet" href="/admin/assets/admin-self-insight.css?v=20260927-3"><link rel="stylesheet" href="/admin/assets/admin-practice.css?v=20260927-4"><link rel="stylesheet" href="/admin/assets/admin-schedule.css?v=20261013-1"><script src="/admin/assets/admin-self-insight.js?v=20260927-1" defer></script><script src="/admin/assets/admin-settings.js?v=20261011-1" defer></script></head><body><header class="admin-mobile-header"><button type="button" aria-expanded="false" aria-controls="admin-sidebar" aria-label="관리자 메뉴 열기" data-admin-sidebar-open>☰</button><a href="/admin/">Seungje Lee</a></header><div class="admin-shell"><aside class="admin-sidebar" id="admin-sidebar" data-admin-sidebar><div class="admin-sidebar-header"><div class="admin-brand"><small>ADMINISTRATION CONSOLE</small><a href="/admin/" aria-label="Seungje Lee 관리자 대시보드"><span>Seungje</span> <strong>Lee</strong></a></div><button class="admin-sidebar-close" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-close>×</button></div><nav aria-label="관리자 메뉴">${navItem('dashboard', '/admin/', '대시보드')}${navItem('notes', '/admin/notes/', 'Tech Notes')}${navItem('comments', '/admin/comments/', '댓글 관리')}${navItem('files', '/admin/files/', '비공개 파일 저장소')}${navItem('aiUsers', '/admin/ai-chat-users/', '사용자 관리')}<div class="admin-personal-links"><small>개인 기록</small>${navItem('selfInsight', '/admin/self-insight/', '자기 이해')}${navItem('schedule', '/admin/schedule/', '일정 관리')}${navItem('practice', '/admin/practice/', '실천 관리')}${navItem('journal', '/admin/journal/', '일기')}${navItem('reading', '/admin/reading/', '독서')}</div><div class="admin-external-links"><a class="admin-external-link" href="${studyUrl}" target="_blank" rel="noopener"><span>Tech Notes 보기</span><b aria-hidden="true">↗</b></a><a class="admin-external-link" href="${resumeUrl}" target="_blank" rel="noopener"><span>이력서 보기</span><b aria-hidden="true">↗</b></a></div></nav><div class="admin-sidebar-footer"><img src="/admin/profile.png" alt="" width="30" height="30"><p class="admin-account" title="${escapeHtml(email)}">${escapeHtml(email)}</p><button class="admin-settings-button" type="button" aria-label="설정" title="설정" data-admin-settings-open><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1.03-1.56V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg></button></div></aside><button class="admin-sidebar-overlay" type="button" aria-label="관리자 메뉴 닫기" data-admin-sidebar-overlay hidden></button><main class="admin-main">${content}</main></div><dialog class="admin-settings" data-admin-settings><form method="post" action="/admin/settings/study-access"><div class="admin-settings-title"><h2>설정</h2><button type="submit" formmethod="dialog" aria-label="설정 닫기">×</button></div><label>테마<select data-admin-theme><option value="system">시스템 설정</option><option value="light">라이트</option><option value="dark">다크</option></select></label><label>언어<select data-admin-language><option value="ko">한국어</option><option value="en">English</option></select></label><section class="admin-settings-notifications"><h3>문의 알림</h3><label><input type="checkbox" data-admin-chat-notifications><span>새 문의를 데스크톱 알림으로 받기</span></label><small data-admin-chat-notification-status>브라우저가 열려 있을 때만 알림을 받을 수 있습니다.</small></section><section class="admin-settings-access"><h3>사용자 문의</h3><input type="hidden" name="chatVisitorRateLimit" value="false"><label><input type="checkbox" name="chatVisitorRateLimit" value="true"${chatVisitorRateLimitChecked}> 사용자 메시지를 10분당 20개로 제한</label><small>끄면 사용자 메시지의 10분당 전송 제한만 해제됩니다. 문의당 최대 저장 메시지 수는 유지됩니다.</small></section><section class="admin-settings-access"><h3>Tech Notes 접근</h3><label>공개 방식<select name="studyAccess"><option value="shared"${sharedSelected}${sharedDisabled}>공유 링크 필요</option><option value="public"${publicSelected}>공개</option></select></label><input type="hidden" name="studyGoogleAccess" value="false"><label><input type="checkbox" name="studyGoogleAccess" value="true"${googleAccessChecked}> Google 로그인 사용자 접근 허용</label>${studyShareToken ? '<small>공유 링크 모드에서 이 옵션을 끄면 로그인 사용자도 공유 링크가 필요합니다.</small>' : '<small>공유 링크 모드를 사용하려면 서버에 STUDY_SHARE_TOKEN을 먼저 설정하세요.</small>'}</section><section class="admin-settings-access"><h3>Tech Notes 콘텐츠</h3><input type="hidden" name="studyCopyProtection" value="false"><label><input type="checkbox" name="studyCopyProtection" value="true"${copyProtectionChecked}> 글 본문 드래그·복사 제한</label><small>공개 글 본문의 선택, 복사, 이미지 드래그를 제한합니다. 브라우저 기능을 통한 완전한 복사 방지는 아닙니다.</small></section><section class="admin-settings-account"><h3>계정</h3><a class="admin-logout" href="/cdn-cgi/access/logout" data-admin-logout>로그아웃</a></section><button class="button primary" type="submit">저장</button></form></dialog></body></html>`;
 }
 
 app.post('/admin/settings/study-access', async (req, res, next) => {
@@ -1110,20 +1137,22 @@ app.post('/admin/settings/study-access', async (req, res, next) => {
 
 app.get('/admin/', async (_req, res, next) => {
   try {
-    const [posts, files, journals, readings, selfProfile, selfExperiences, serviceStatuses, disk] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list(), readingService.list(), selfInsightService.loadProfile(), selfInsightService.listExperiences(), loadServiceStatuses(), loadDiskStatus()]);
+    const [posts, files, journals, readings, selfProfile, selfExperiences, schedules, serviceStatuses, disk] = await Promise.all([loadPosts(), loadPrivateFiles(), journalService.list(), readingService.list(), selfInsightService.loadProfile(), selfInsightService.listExperiences(), scheduleService.list(), loadServiceStatuses(), loadDiskStatus()]);
     const memory = process.memoryUsage();
     const today = todayInSeoul();
     const wroteToday = journals.some((journal) => journal.date === today);
     const journalHref = wroteToday ? `/admin/journal/${today}/` : '/admin/journal/new';
     const completedThisMonth = readings.filter((book) => book.status === 'completed' && book.completedDate?.startsWith(today.slice(0, 7))).length;
     const selfProfileCount = SELF_INSIGHT_PROFILE_FIELDS.filter(([field]) => selfProfile[field]).length;
+    const upcomingSchedules = schedules.filter((record) => record.status === 'planned' && record.date >= today);
+    const nextSchedule = upcomingSchedules[0];
     const serviceStatusLabels = { running: '실행 중', stopped: '중지', unknown: '확인 불가' };
     const serviceRows = serviceStatuses.map((service) => `<tr><td><strong>${escapeHtml(service.name)}</strong></td><td><span class="service-state is-${service.status}">${serviceStatusLabels[service.status]}</span></td><td>${service.pid ?? '—'}</td><td>${service.cpu === null ? '—' : `${service.cpu.toFixed(1)}%`}</td><td>${service.memory === null ? '—' : formatFileSize(service.memory)}</td><td>${service.uptime === null ? '—' : formatUptime(service.uptime)}</td></tr>`).join('');
     const serviceStatusContent = `<section class="managed-services"><header><div><h2>서비스 상태</h2><p>허용된 애플리케이션 서비스만 표시합니다.</p></div></header><div class="managed-services-table"><table><thead><tr><th>서비스</th><th>상태</th><th>PID</th><th>CPU</th><th>메모리</th><th>가동 시간</th></tr></thead><tbody>${serviceRows}</tbody></table></div></section>`;
     const diskContent = disk
       ? `<dl class="resource-status disk-status"><div><dt>디스크 사용</dt><dd>${formatGigabytes(disk.used)}</dd></div><div><dt>디스크 여유</dt><dd>${formatGigabytes(disk.available)}</dd></div></dl><small class="disk-total">전체 용량 ${formatGigabytes(disk.total)}</small>`
       : '<strong>확인 불가</strong><small>디스크 정보를 불러오지 못했습니다.</small>';
-    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 상태</span><dl class="memory-status"><div><dt>Node.js 사용</dt><dd>${formatFileSize(memory.rss)}</dd></div><div><dt>시스템 여유</dt><dd>${formatGigabytes(os.freemem())}</dd></div></dl></section><section class="dashboard-card"><span>디스크 상태</span>${diskContent}</section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>자기 이해</span><strong>${selfProfileCount}/${SELF_INSIGHT_PROFILE_FIELDS.length} 항목 · ${selfExperiences.length}개 경험</strong><a href="/admin/self-insight/">기록 관리 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section><section class="dashboard-card"><span>이번 달 독서</span><strong>${completedThisMonth ? `목표 달성 · ${completedThisMonth}권` : '목표까지 1권'}</strong><a href="/admin/reading/">독서 기록 보기 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
+    const content = `<div class="admin-title"><div><p>SERVER OVERVIEW</p><h1>대시보드</h1></div><span class="server-health"><i aria-hidden="true"></i>서비스 정상</span></div><div class="dashboard-grid"><section class="dashboard-card"><span>서버 상태</span><strong>정상 작동 중</strong><small>가동 시간 ${formatUptime(process.uptime())}</small></section><section class="dashboard-card"><span>메모리 상태</span><dl class="memory-status"><div><dt>Node.js 사용</dt><dd>${formatFileSize(memory.rss)}</dd></div><div><dt>시스템 여유</dt><dd>${formatGigabytes(os.freemem())}</dd></div></dl></section><section class="dashboard-card"><span>디스크 상태</span>${diskContent}</section><section class="dashboard-card"><span>Tech Notes</span><strong>${posts.length}개</strong><a href="/admin/notes/">글 관리 →</a></section><section class="dashboard-card"><span>비공개 파일</span><strong>${files.length}개</strong><a href="/admin/files/">파일 관리 →</a></section><section class="dashboard-card"><span>자기 이해</span><strong>${selfProfileCount}/${SELF_INSIGHT_PROFILE_FIELDS.length} 항목 · ${selfExperiences.length}개 경험</strong><a href="/admin/self-insight/">기록 관리 →</a></section><section class="dashboard-card"><span>학습 일정</span><strong>${nextSchedule ? `${escapeHtml(nextSchedule.date)} · ${escapeHtml(nextSchedule.title)}` : '예정된 일정 없음'}</strong><a href="/admin/schedule/">캘린더 보기 →</a></section><section class="dashboard-card"><span>오늘의 일기</span><strong>${wroteToday ? '작성 완료' : '아직 미작성'}</strong><a href="${journalHref}">${wroteToday ? '오늘 기록 보기' : '오늘 기록 작성'} →</a></section><section class="dashboard-card"><span>이번 달 독서</span><strong>${completedThisMonth ? `목표 달성 · ${completedThisMonth}권` : '목표까지 1권'}</strong><a href="/admin/reading/">독서 기록 보기 →</a></section></div><section class="server-details"><h2>실행 환경</h2><dl><div><dt>Node.js</dt><dd>${escapeHtml(process.version)}</dd></div><div><dt>환경</dt><dd>${escapeHtml(process.env.NODE_ENV || 'development')}</dd></div><div><dt>프로세스 ID</dt><dd>${process.pid}</dd></div></dl></section>`;
     res.send(adminLayout('대시보드', content.replace('<section class="server-details">', `${serviceStatusContent}<section class="server-details">`), res.locals.adminEmail, 'dashboard'));
   } catch (error) { next(error); }
 });
@@ -1159,6 +1188,84 @@ app.post('/admin/api/ai-chat/users/:id/delete', async (req, res) => {
 app.get('/admin/ai-chat-users/', (_req, res) => {
   const content = `<div class="admin-title"><div><p>AI CHAT ACCESS</p><h1>사용자 관리</h1></div></div><p class="ai-users-guide">Google 로그인 사용자의 AI Chat 이용을 승인·중지하거나 계정 데이터를 삭제할 수 있습니다.</p><section class="managed-services ai-users-panel"><header><div><h2>Google 로그인 사용자</h2><p data-ai-users-status>사용자 정보를 불러오는 중입니다.</p></div><button class="button" type="button" data-ai-users-refresh>새로고침</button></header><div class="managed-services-table" data-ai-users-table hidden><table><thead><tr><th>이름</th><th>이메일</th><th>상태</th><th>역할</th><th>가입 일시</th><th>오늘 요청</th><th>관리</th></tr></thead><tbody data-ai-users-body></tbody></table></div><div class="ai-users-empty" data-ai-users-empty hidden></div></section><p class="ai-users-privacy">Google 계정 식별자, 세션·OAuth·CSRF 토큰과 대화 내용은 이 화면에 표시하지 않습니다.</p><script src="/admin/assets/admin-ai-chat-users.js?v=20260914-1" defer></script>`;
   res.send(adminLayout('사용자 관리', content, res.locals.adminEmail, 'aiUsers'));
+});
+
+app.get('/admin/schedule/', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const today = todayInSeoul();
+    const month = scheduleMonth(req.query.month, today.slice(0, 7));
+    const records = await scheduleService.list();
+    const firstDay = new Date(`${month}-01T00:00:00Z`);
+    const calendarStart = new Date(firstDay);
+    calendarStart.setUTCDate(1 - firstDay.getUTCDay());
+    const nextMonth = new Date(firstDay); nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+    const lastDay = new Date(nextMonth); lastDay.setUTCDate(0);
+    const calendarEnd = new Date(lastDay); calendarEnd.setUTCDate(lastDay.getUTCDate() + (6 - lastDay.getUTCDay()));
+    const recordsByDate = new Map();
+    for (const record of records) {
+      if (!recordsByDate.has(record.date)) recordsByDate.set(record.date, []);
+      recordsByDate.get(record.date).push(record);
+    }
+    const statusLabels = { planned: '예정', completed: '완료', canceled: '취소' };
+    const weeks = [];
+    for (const cursor = new Date(calendarStart); cursor <= calendarEnd; cursor.setUTCDate(cursor.getUTCDate() + 7)) {
+      const days = [];
+      for (let offset = 0; offset < 7; offset += 1) {
+        const dateValue = new Date(cursor); dateValue.setUTCDate(cursor.getUTCDate() + offset);
+        const date = dateValue.toISOString().slice(0, 10);
+        const items = (recordsByDate.get(date) || []).map((record) => `<a class="schedule-item is-${record.status}" href="/admin/schedule/${record.id}/edit"><small>${record.startTime ? `${escapeHtml(record.startTime)}–${escapeHtml(record.endTime)}` : '시간 미지정'} · ${escapeHtml(record.category)} · ${statusLabels[record.status]}</small><strong>${escapeHtml(record.title)}</strong></a>`).join('');
+        const classes = ['schedule-day', date.startsWith(month) ? '' : 'is-outside', date === today ? 'is-today' : ''].filter(Boolean).join(' ');
+        days.push(`<section class="${classes}" data-date="${date}"><header class="schedule-day-header"><time datetime="${date}">${dateValue.getUTCDate()}</time><a href="/admin/schedule/new?date=${date}" aria-label="${date} 일정 추가">+</a></header><div class="schedule-items">${items}</div></section>`);
+      }
+      weeks.push(`<div class="schedule-week">${days.join('')}</div>`);
+    }
+    const monthCount = records.filter((record) => record.date.startsWith(month)).length;
+    const title = `${Number(month.slice(0, 4))}년 ${Number(month.slice(5, 7))}월`;
+    const content = `<div class="admin-title"><div><p>STUDY SCHEDULE</p><h1>일정 관리</h1></div><a class="button primary" href="/admin/schedule/new?date=${today}">일정 추가</a></div><div class="schedule-toolbar"><h2>${title}</h2><div><a class="button" href="/admin/schedule/?month=${shiftScheduleMonth(month, -1)}" aria-label="이전 달">←</a><a class="button" href="/admin/schedule/?month=${today.slice(0, 7)}">오늘</a><a class="button" href="/admin/schedule/?month=${shiftScheduleMonth(month, 1)}" aria-label="다음 달">→</a></div></div><div class="schedule-calendar-scroll"><div class="schedule-calendar"><div class="schedule-weekdays"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>${weeks.join('')}</div></div>${monthCount ? '' : '<p class="schedule-empty">이 달에 등록된 학습 일정이 없습니다. 날짜의 + 버튼으로 일정을 추가할 수 있습니다.</p>'}`;
+    res.send(adminLayout('일정 관리', content, res.locals.adminEmail, 'schedule'));
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/schedule/new', (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  let date;
+  try { date = normalizeDate(req.query.date); } catch { date = todayInSeoul(); }
+  const content = `<div class="admin-title"><div><p>NEW STUDY SCHEDULE</p><h1>일정 추가</h1></div></div>${scheduleForm({ date, category: 'Oracle', status: 'planned' }, '/admin/schedule/new', '저장')}`;
+  res.send(adminLayout('일정 추가', content, res.locals.adminEmail, 'schedule'));
+});
+
+app.post('/admin/schedule/new', async (req, res, next) => {
+  try {
+    const record = await scheduleService.save(req.body);
+    res.redirect(303, `/admin/schedule/?month=${record.date.slice(0, 7)}`);
+  } catch (error) { next(error); }
+});
+
+app.get('/admin/schedule/:id/edit', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const record = await scheduleService.load(req.params.id);
+    if (!record) return res.status(404).send('Not found');
+    const content = `<div class="admin-title"><div><p>${escapeHtml(record.category)} · ${escapeHtml(record.date)}</p><h1>일정 수정</h1></div></div>${scheduleForm(record, `/admin/schedule/${record.id}/edit`, '변경사항 저장')}<form class="delete-form schedule-delete" method="post" action="/admin/schedule/${record.id}/delete" onsubmit="return confirm('이 일정을 삭제할까요?')"><button class="button danger" type="submit">일정 삭제</button></form>`;
+    res.send(adminLayout('일정 수정', content, res.locals.adminEmail, 'schedule'));
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/schedule/:id/edit', async (req, res, next) => {
+  try {
+    if (!await scheduleService.load(req.params.id)) return res.status(404).send('Not found');
+    const record = await scheduleService.save(req.body, req.params.id);
+    res.redirect(303, `/admin/schedule/?month=${record.date.slice(0, 7)}`);
+  } catch (error) { next(error); }
+});
+
+app.post('/admin/schedule/:id/delete', async (req, res, next) => {
+  try {
+    const record = await scheduleService.load(req.params.id);
+    if (!record || !await scheduleService.remove(req.params.id)) return res.status(404).send('Not found');
+    res.redirect(303, `/admin/schedule/?month=${record.date.slice(0, 7)}`);
+  } catch (error) { next(error); }
 });
 
 app.get('/admin/practice/', async (_req, res, next) => {

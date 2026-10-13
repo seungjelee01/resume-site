@@ -31,12 +31,13 @@ sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/jour
 sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/reading"
 sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/self-insight"
 sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/practice"
+sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/schedule"
 sudo install -d -o "$run_user" -g "$run_group" -m 0700 "$deploy_root/shared/quizzes"
 
 if [[ ! -e "$deploy_root/shared/resume.env" ]]; then
   env_tmp=$(mktemp)
   trap 'rm -f "$env_tmp" "${unit_tmp:-}"' EXIT
-  printf 'NODE_ENV=production\nHOST=127.0.0.1\nPORT=3000\nSTUDY_DIR=%s/shared/study\nSTUDY_FILES_DIR=%s/shared/study-files\nPRIVATE_FILES_DIR=%s/shared/private-files\nCOMMENTS_DIR=%s/shared/comments\nCHATS_DIR=%s/shared/chats\nANALYTICS_DIR=%s/shared/analytics\nJOURNAL_DIR=%s/shared/journal\nREADING_DIR=%s/shared/reading\nSELF_INSIGHT_DIR=%s/shared/self-insight\nQUIZ_DIR=%s/shared/quizzes\n' "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" > "$env_tmp"
+  printf 'NODE_ENV=production\nHOST=127.0.0.1\nPORT=3000\nSTUDY_DIR=%s/shared/study\nSTUDY_FILES_DIR=%s/shared/study-files\nPRIVATE_FILES_DIR=%s/shared/private-files\nCOMMENTS_DIR=%s/shared/comments\nCHATS_DIR=%s/shared/chats\nANALYTICS_DIR=%s/shared/analytics\nJOURNAL_DIR=%s/shared/journal\nREADING_DIR=%s/shared/reading\nSELF_INSIGHT_DIR=%s/shared/self-insight\nPRACTICE_DIR=%s/shared/practice\nSCHEDULE_DIR=%s/shared/schedule\nQUIZ_DIR=%s/shared/quizzes\n' "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" "$deploy_root" > "$env_tmp"
   sudo install -o "$run_user" -g "$run_group" -m 0640 "$env_tmp" "$deploy_root/shared/resume.env"
 fi
 

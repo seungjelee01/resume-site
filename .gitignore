@@ -14,6 +14,7 @@ _journal/
 _reading/
 _self_insight/
 _practice/
+_schedule/
 _quizzes/
 _study/*
 !_study/.gitkeep
