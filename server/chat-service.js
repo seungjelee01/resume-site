@@ -34,7 +34,10 @@ function publicConversation(conversation) {
   };
 }
 
-export function createChatService({ directory, production, allowLocalAdmin, verifyAdmin, canAccessStudy, getPortalUser, notify, isVisitorMessageRateLimitEnabled = () => true, limits }) {
+export function createChatService({ directory, production, allowLocalAdmin, verifyAdmin, canAccessStudy, getPortalUser, notify, isVisitorMessageRateLimitEnabled = () => true, getDiskAvailableBytes = async (target) => {
+  const stats = await fs.statfs(target);
+  return Number(stats.bavail) * Number(stats.bsize);
+}, limits }) {
   const clients = new Map();
   const adminListClients = new Set();
   const pendingSessions = new Map();
@@ -237,8 +240,7 @@ export function createChatService({ directory, production, allowLocalAdmin, veri
     const size = Number(input?.size);
     if (!adminFileNamePattern.test(name) || name === '.' || name === '..') throw new Error('파일 이름을 확인해 주세요.');
     if (!Number.isSafeInteger(size) || size < 1 || size > adminFileMaxSize) throw new Error('5GB 이하의 파일만 전송할 수 있습니다.');
-    const stats = await fs.statfs(directory);
-    if (Number(stats.bavail) * Number(stats.bsize) < size + 1024 * 1024 * 1024) throw new Error('서버 저장 공간이 부족합니다.');
+    if (await getDiskAvailableBytes(directory) < size + 1024 * 1024 * 1024) throw new Error('서버 저장 공간이 부족합니다.');
     const uploadId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const metadata = { id: uploadId, conversationId: id, name, size, received: 0, createdAt };

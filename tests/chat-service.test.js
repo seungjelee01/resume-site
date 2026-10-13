@@ -76,7 +76,9 @@ test('admin can upload and download a disk image in ordered chunks', async () =>
   await fs.writeFile(path.join(directory, `${conversation.id}.json`), JSON.stringify(conversation));
   const service = createChatService({
     directory, production: false, allowLocalAdmin: true, verifyAdmin: async () => {},
-    canAccessStudy: async () => true, getPortalUser: async () => null, notify: () => {}, limits,
+    canAccessStudy: async () => true, getPortalUser: async () => null, notify: () => {},
+    getDiskAvailableBytes: async () => 7 * 1024 * 1024 * 1024,
+    limits,
   });
 
   const maximum = await service.beginAdminUpload(conversation.id, { name: 'maximum-size.img', size: 5 * 1024 * 1024 * 1024 });
