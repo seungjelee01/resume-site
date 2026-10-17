@@ -259,7 +259,68 @@ const ORACLE_SEED_V8 = Object.freeze([
   ['SQL%BULK_EXCEPTIONS에서 오류가 발생한 컬렉션 요소의 인덱스를 나타내는 필드는?', ['ERROR_INDEX'], 'plsql-forall-and-save-exceptions'],
 ]);
 
-const SEED_VERSION = 8;
+const QUIZ_SEED_V9 = Object.freeze([
+  ['호출한 트랜잭션과 독립적으로 COMMIT 또는 ROLLBACK할 수 있도록 선언하는 지시어는?', ['PRAGMA AUTONOMOUS_TRANSACTION', 'AUTONOMOUS_TRANSACTION'], 'plsql-autonomous-transactions'],
+  ['자율 트랜잭션에서 COMMIT이나 ROLLBACK 없이 프로그램을 종료할 때 발생하는 오류는?', ['ORA-06519', 'ORA-06519 오류'], 'plsql-autonomous-transactions'],
+  ['참조 객체의 변경으로 종속 객체를 사용할 수 없는 상태는?', ['INVALID'], 'plsql-object-dependencies-and-recompilation'],
+  ['INVALID 상태인 저장 프로시저를 명시적으로 재컴파일하는 구문은?', ['ALTER PROCEDURE COMPILE', 'ALTER PROCEDURE 프로시저명 COMPILE'], 'plsql-object-dependencies-and-recompilation'],
+  ['DML로 변경된 값을 별도의 SELECT 없이 변수로 가져오는 절은?', ['RETURNING INTO', 'RETURNING절'], 'plsql-returning-into'],
+  ['여러 행의 DML 결과를 컬렉션으로 가져오는 절은?', ['RETURNING BULK COLLECT INTO', 'BULK COLLECT INTO'], 'plsql-returning-into'],
+  ['호스트와 가상 머신만 통신할 수 있도록 VirtualBox에서 사용하는 네트워크 방식은?', ['호스트 전용 어댑터', 'Host-only Adapter', 'Host-only'], 'virtualbox-oracle-linux-server', 'Linux'],
+  ['원격 Linux 서버에 암호화된 터미널 접속을 제공하는 프로토콜은?', ['SSH'], 'virtualbox-oracle-linux-server', 'Linux'],
+  ['파일의 앞부분을 출력하는 Linux 명령은?', ['head'], 'linux-file-text-and-time-commands', 'Linux'],
+  ['앞 명령의 표준 출력을 다음 명령의 표준 입력으로 전달하는 기호는?', ['|', '파이프', 'Pipe'], 'linux-file-text-and-time-commands', 'Linux'],
+  ['Linux에서 새 사용자를 생성하는 명령은?', ['useradd'], 'linux-user-and-group-management', 'Linux'],
+  ['기존 사용자의 그룹 정보를 변경하는 명령은?', ['usermod'], 'linux-user-and-group-management', 'Linux'],
+  ['vi에서 행 번호를 표시하는 명령은?', [':set nu', 'set nu'], 'linux-vi-editor', 'Linux'],
+  ['vi에서 저장하고 종료하는 명령은?', [':wq', 'wq'], 'linux-vi-editor', 'Linux'],
+  ['Linux에서 현재 작업 디렉터리의 절대 경로를 출력하는 명령은?', ['pwd'], 'linux-virtual-machines-users-and-paths', 'Linux'],
+  ['Linux에서 root의 로그인 환경을 적용하며 전환하는 명령은?', ['su -', 'su - root'], 'linux-virtual-machines-users-and-paths', 'Linux'],
+  ['파일이나 디렉터리의 접근 권한을 변경하는 Linux 명령은?', ['chmod'], 'linux-file-permissions-umask-and-ownership', 'Linux'],
+  ['새 파일과 디렉터리의 기본 권한에서 제거할 권한을 지정하는 값은?', ['umask'], 'linux-file-permissions-umask-and-ownership', 'Linux'],
+  ['Oracle Database 생성과 설정에 사용하는 그래픽 도구는?', ['DBCA', 'Database Configuration Assistant'], 'oracle-19c-linux-preinstallation'],
+  ['Oracle Listener 생성과 설정에 사용하는 도구는?', ['NETCA', 'Network Configuration Assistant'], 'oracle-19c-linux-preinstallation'],
+  ['새 접속을 허용하지 않고 모든 세션이 종료될 때까지 기다리는 종료 모드는?', ['SHUTDOWN NORMAL', 'NORMAL'], 'oracle-database-shutdown-modes'],
+  ['진행 중인 SQL을 중단하고 미완료 트랜잭션을 ROLLBACK한 뒤 종료하는 모드는?', ['SHUTDOWN IMMEDIATE', 'IMMEDIATE'], 'oracle-database-shutdown-modes'],
+  ['초기 파라미터 파일을 읽고 SGA와 Background Process만 생성한 시작 단계는?', ['NOMOUNT'], 'oracle-instance-startup-stages-and-open-modes'],
+  ['Control File을 열어 Database 구조를 확인하지만 Data File과 Redo Log File은 열지 않은 단계는?', ['MOUNT'], 'oracle-instance-startup-stages-and-open-modes'],
+  ['Listener가 알지 못하는 SID로 접속할 때 발생할 수 있는 오류는?', ['ORA-12505', 'ORA-12505 오류'], 'oracle-listener-and-database-daily-checks'],
+  ['현재 Instance 정보를 Listener에 즉시 등록하는 SQL문은?', ['ALTER SYSTEM REGISTER', 'ALTER SYSTEM REGISTER;'], 'oracle-listener-and-database-daily-checks'],
+  ['텍스트 형식으로 사용자가 직접 편집할 수 있는 초기 파라미터 파일은?', ['PFILE', 'Parameter File', '텍스트 파라미터 파일'], 'oracle-initialization-parameters'],
+  ['동적 파라미터 변경을 현재 Instance와 SPFILE에 모두 반영하는 범위는?', ['SCOPE=BOTH', 'BOTH'], 'oracle-initialization-parameters'],
+  ['공유 SQL Area와 Data Dictionary Cache가 포함되는 SGA 영역은?', ['Shared Pool', '공유 풀'], 'oracle-sga-memory'],
+  ['Data File에서 읽은 Block의 복사본을 저장하는 SGA 영역은?', ['Database Buffer Cache', 'Buffer Cache', '데이터베이스 버퍼 캐시'], 'oracle-sga-memory'],
+  ['ASMM에서 자동 조정할 SGA 전체 크기를 지정하는 파라미터는?', ['SGA_TARGET'], 'oracle-memory-management'],
+  ['SGA와 PGA를 함께 자동 관리하는 메모리 관리 방식은?', ['AMM', 'Automatic Memory Management'], 'oracle-memory-management'],
+  ['SELECT문 처리 단계 중 실행계획을 생성하거나 재사용할 실행계획을 찾는 단계는?', ['PARSE', 'Parse'], 'oracle-server-process-and-sql-processing'],
+  ['SELECT문에서 실행 결과 행을 사용자에게 전달하는 단계는?', ['FETCH', 'Fetch'], 'oracle-server-process-and-sql-processing'],
+  ['Commit Record를 포함한 Redo Entry를 Online Redo Log File에 기록하는 Background Process는?', ['LGWR', 'Log Writer'], 'oracle-background-processes-and-checkpoints'],
+  ['Database Buffer Cache의 Dirty Buffer를 Data File에 기록하는 Background Process는?', ['DBWR', 'Database Writer'], 'oracle-background-processes-and-checkpoints'],
+  ['Database의 물리적 구조와 Checkpoint 정보를 기록하는 파일은?', ['Control File', '컨트롤 파일'], 'oracle-control-files-and-multiplexing'],
+  ['Control File 손상에 대비해 여러 위치에 같은 내용을 유지하는 구성은?', ['Control File 다중화', 'Control File Multiplexing', '다중화'], 'oracle-control-files-and-multiplexing'],
+  ['현재 Shell 세션에 등록된 alias를 삭제하는 명령은?', ['unalias'], 'linux-alias', 'Linux'],
+  ['Bash alias를 로그인 후에도 유지하기 위해 등록하는 대표 설정 파일은?', ['.bashrc', '~/.bashrc'], 'linux-alias', 'Linux'],
+  ['LGWR가 기록할 Online Redo Log File Group을 변경하는 작업은?', ['Log Switch', '로그 스위치'], 'oracle-online-redo-log-files'],
+  ['수동으로 Log Switch를 발생시키는 SQL문은?', ['ALTER SYSTEM SWITCH LOGFILE', 'ALTER SYSTEM SWITCH LOGFILE;'], 'oracle-online-redo-log-files'],
+  ['Tablespace를 정상적으로 Offline 상태로 변경하는 절은?', ['OFFLINE NORMAL', 'ALTER TABLESPACE OFFLINE NORMAL'], 'oracle-datafile-relocation'],
+  ['Control File에 기록된 Data File 경로를 변경하는 구문은?', ['ALTER DATABASE RENAME FILE', 'RENAME FILE'], 'oracle-datafile-relocation'],
+  ['Extent를 지정한 동일한 크기로 할당하는 Locally Managed Tablespace 방식은?', ['UNIFORM', 'UNIFORM SIZE'], 'oracle-extent-management'],
+  ['Data File 공간이 부족할 때 파일 크기를 자동으로 늘리는 설정은?', ['AUTOEXTEND', 'AUTOEXTEND ON'], 'oracle-extent-management'],
+  ['Table이나 Index 같은 하나의 객체가 사용하는 논리적 저장 공간은?', ['Segment', '세그먼트'], 'oracle-storage-structures-and-datafiles'],
+  ['SYSTEM과 SYSAUX 이외에 사용자 데이터를 분리하여 저장하는 Tablespace는?', ['Non-System Tablespace', 'Non System Tablespace'], 'oracle-storage-structures-and-datafiles'],
+  ['Tablespace에서 조회는 허용하지만 DML로 데이터를 변경하지 못하게 하는 상태는?', ['READ ONLY'], 'oracle-tablespace-states'],
+  ['Offline 상태의 Tablespace를 다시 사용할 수 있게 하는 명령은?', ['ALTER TABLESPACE ONLINE', 'ONLINE'], 'oracle-tablespace-states'],
+  ['Database 전체 파일 이관 중 Data File과 Redo Log File 경로를 변경하기 위해 시작하는 단계는?', ['MOUNT'], 'oracle-database-files-relocation'],
+  ['SPFILE 환경에서 정적 파라미터인 CONTROL_FILES의 값을 변경할 때 사용하는 범위는?', ['SCOPE=SPFILE', 'SPFILE'], 'oracle-database-files-relocation'],
+  ['DML 작업 시 변경 전 값을 저장하는 공간은?', ['Undo', 'Undo Tablespace'], 'oracle-undo-management'],
+  ['Transaction 종료 후에도 이전 값을 보존할 시간을 초 단위로 지정하는 파라미터는?', ['UNDO_RETENTION'], 'oracle-undo-management'],
+  ['Tablespace에 Segment를 생성할 수 있도록 사용자에게 부여하는 공간 한도는?', ['Quota', 'QUOTA'], 'oracle-user-tablespaces-and-privileges'],
+  ['Database에 로그인할 수 있도록 사용자에게 부여하는 시스템 권한은?', ['CREATE SESSION'], 'oracle-user-tablespaces-and-privileges'],
+  ['Table을 생성하기 위해 필요한 시스템 권한은?', ['CREATE TABLE'], 'oracle-user-tablespaces-and-privileges'],
+  ['다른 사용자가 소유한 Sequence의 NEXTVAL과 CURRVAL을 사용하기 위해 필요한 객체 권한은?', ['SELECT', 'SELECT 권한'], 'oracle-user-tablespaces-and-privileges'],
+]);
+
+const SEED_VERSION = 9;
 
 function normalizeText(value, label, maxLength, required = false) {
   const text = String(value || '').trim();
@@ -317,10 +378,11 @@ export function createQuizService(directory) {
       ...(version < 6 ? ORACLE_SEED_V6 : []),
       ...(version < 7 ? ORACLE_SEED_V7 : []),
       ...(version < 8 ? ORACLE_SEED_V8 : []),
+      ...(version < 9 ? QUIZ_SEED_V9 : []),
     ];
-    for (const [prompt, answers, relatedSlug] of seeds) {
+    for (const [prompt, answers, relatedSlug, category = 'Oracle'] of seeds) {
       if (existingPrompts.has(prompt)) continue;
-      await writeRecord({ id: crypto.randomUUID(), prompt, answers, category: 'Oracle', relatedSlug, active: true, createdAt: now, updatedAt: now });
+      await writeRecord({ id: crypto.randomUUID(), prompt, answers, category, relatedSlug, active: true, createdAt: now, updatedAt: now });
     }
     await fs.writeFile(markerFile, `version:${SEED_VERSION}\nupdated:${now}\n`, { encoding: 'utf8', mode: 0o600 });
   };
