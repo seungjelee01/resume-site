@@ -573,21 +573,46 @@ a {
 
 .study-note-content img {
     display: block;
-    max-width: 100%;
+    max-width: none;
     height: auto;
-    margin: 1.25em auto 2em;
+    margin: 0 auto;
     border: 1px solid var(--study-border);
     border-radius: 6px;
     background: var(--study-surface);
     box-shadow: 0 8px 24px color-mix(in srgb, var(--study-text) 8%, transparent);
 }
 
+.study-image-scroll {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    margin: 1.25em 0 2em;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-color: var(--study-border) transparent;
+    scrollbar-width: thin;
+}
+
+.study-image-scroll::-webkit-scrollbar {
+    height: 8px;
+}
+
+.study-image-scroll::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: var(--study-border);
+    background-clip: padding-box;
+}
+
+.study-image-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
 
 .study-note-content p:has(> .study-image-caption) {
     margin: 0;
 }
 
-.study-note-content p:has(> .study-image-caption) > img {
+.study-note-content p:has(> .study-image-caption) > .study-image-scroll {
     margin-bottom: 0.65em;
 }
 
